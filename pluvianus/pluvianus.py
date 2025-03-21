@@ -1,9 +1,9 @@
 import sys
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, 
-    QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QSplitter,QLayout,
+    QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog, QSizePolicy
 )
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QColor
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtCore import QObject, Signal, Slot, Qt
 from PySide6.QtWebChannel import QWebChannel
@@ -35,39 +35,19 @@ class ShiftsWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
         
-        if True:
-            self.browser = pg.PlotWidget()
-            self.browser.plot(x=np.arange(shifts.shape[0]), y=shifts[:, 0], pen=pg.mkPen(color='b', width=2), name='x shifts')
-            self.browser.plot(x=np.arange(shifts.shape[0]), y=shifts[:, 1], pen=pg.mkPen(color='r', width=2), name='y shifts')
-            self.browser.setLabel('bottom', 'Frame Number')
-            self.browser.setLabel('left', 'Shift')
-            self.browser.showGrid(x=True, y=True)
-            self.browser.setWindowTitle("Shifts per Frame")
-    
-        else:
-            fig = go.Figure(data=[
-                go.Scatter(x=np.arange(shifts.shape[0]), y=shifts[:, 0], name='x shifts', line=dict(color='blue', width=2)),
-                go.Scatter(x=np.arange(shifts.shape[0]), y=shifts[:, 1], name='y shifts', line=dict(color='red', width=2))
-            ])
-            fig.update_layout(title="Shifts per Frame", xaxis_title="Frame Number", yaxis_title="Shift")
-            self.browser = QWebEngineView()
-            #self.browser.setContextMenuPolicy(Qt.NoContextMenu)       
-            self.browser.setHtml(fig.to_html(include_plotlyjs='cdn'))
+        self.temporal_widget = pg.PlotWidget()
+        self.temporal_widget.setDefaultPadding( 0.0 )
+        self.temporal_widget.getPlotItem().showGrid(x=True, y=True, alpha=0.3)
+        self.temporal_widget.getPlotItem().showAxes(True, showValues=(True, False, False, True))
+        self.temporal_widget.getPlotItem().setContentsMargins(0, 0, 10, 0)  # add margin to the right
+        self.temporal_widget.getPlotItem().setTitle(f"Motion correction shifts per frame")
+        self.temporal_widget.setLabel('bottom', 'Frame Number')
+        self.temporal_widget.setLabel('left', 'Shift (pixels)')
+        self.temporal_widget.plot(x=np.arange(shifts.shape[0]), y=shifts[:, 0], pen=pg.mkPen(color='b', width=2), name='x shifts')
+        self.temporal_widget.plot(x=np.arange(shifts.shape[0]), y=shifts[:, 1], pen=pg.mkPen(color='r', width=2), name='y shifts')
         
-        layout.addWidget(self.browser)
+        layout.addWidget(self.temporal_widget)
         self.resize(700, 500)
-        
-"""
-class PluvianusPlotbox_plotly(QWebEngineView):
-    def __init__(self):
-        super().__init__()
-        
-        self.setContextMenuPolicy(Qt.NoContextMenu)
-        self.fig = go.Figure()
-        
-    def add_trace(x, y, name):
-"""     
-        
         
 class BackgroundWindow(QMainWindow):
     def __init__(self, b, f, dims):
@@ -88,142 +68,92 @@ class BackgroundWindow(QMainWindow):
         top_row.addWidget(label)
         top_row.addWidget(self.spin_box)
         layout.addLayout(top_row)
-        
-                
+                        
         self.b = b
         self.f = f
         self.dims = dims
         
         # bottom row
-        bottom_row = QHBoxLayout()
+        #bottom_row = QHBoxLayout()
+        bottom_row = QSplitter( childrenCollapsible=False)
+        bottom_row.setStyleSheet("QSplitter::handle { background-color: lightgray; }")
         
-        if True:
-            self.tempopral_widget = pg.PlotWidget()
-        else:
-            self.tempopral_widget = QWebEngineView()
-            self.tempopral_widget.setContextMenuPolicy(Qt.NoContextMenu)
-        bottom_row.addWidget(self.tempopral_widget)  
+        self.temporal_widget = pg.PlotWidget()
+        self.temporal_widget.setDefaultPadding( 0.0 )
+        self.temporal_widget.getPlotItem().showGrid(x=True, y=True, alpha=0.3)
+        self.temporal_widget.getPlotItem().setMenuEnabled(False)
+        self.temporal_widget.getPlotItem().showAxes(True, showValues=(True, False, False, True))
+        self.temporal_widget.getPlotItem().setContentsMargins(0, 0, 10, 0)  # add margin to the right
+        self.temporal_widget.getPlotItem().setLabel('bottom', 'Frame Number')
+        self.temporal_widget.getPlotItem().setLabel('left', 'Fluorescence')
+        bottom_row.addWidget(self.temporal_widget)
 
-        self.spatial_widget = pg.ImageView()
-        self.spatial_widget.getView().setAspectLocked(True)
-        self.spatial_widget.getView().invertY(False)
-        self.spatial_widget.getView().setBackgroundColor((255, 0, 255))
-
-        
-        self.spatial_widget.setColorMap(pg.colormap.get('viridis', source='matplotlib'))
-        self.spatial_widget.ui.menuBtn.hide()
-        self.spatial_widget.ui.roiBtn.hide()
-        self.spatial_widget.getView().autoRange()
-        region = self.spatial_widget.ui.histogram.item.region
-        alpha = 50
-        region.setBrush((200, 200, 200, alpha))  # subtle gray for clarity
-        for line in region.lines:
-            line.setPen((100, 100, 100, 255))  # neutral gray outline
-        
-       
+        self.spatial_widget = pg.PlotWidget()
+        #p1 = self.spatial_widget.addPlot(title="interactive")
+        # Basic steps to create a false color image with color bar:
+        self.spatial_image = pg.ImageItem()
+        self.spatial_widget.addItem( self.spatial_image )
+        self.colorbar_item=self.spatial_widget.getPlotItem().addColorBar( self.spatial_image, colorMap='viridis', rounding=0.00000000001) # , interactive=False)
+        self.spatial_widget.setAspectLocked(True)
+        self.spatial_widget.getPlotItem().showAxes(True, showValues=(True,False,False,True) )
+        for side in ( 'top', 'right'):
+            ax = self.spatial_widget.getPlotItem().getAxis(side)
+            ax.setStyle(tickLength=0) 
+        for side in ('left', 'bottom'):
+            ax = self.spatial_widget.getPlotItem().getAxis(side)
+            ax.setStyle(tickLength=10)         
+        self.spatial_widget.getPlotItem().setMenuEnabled(False)
+        self.spatial_widget.setDefaultPadding( 0.0 )
         bottom_row.addWidget(self.spatial_widget)
         
-    
-        layout.addLayout(bottom_row)
+        layout.addWidget(bottom_row)
         self.update_plot(0)        
         self.resize(1200, 600)
     
     def update_plot(self, value):
-        index = self.spin_box.value()
-        
-        vec = self.b[:, index]
-        print("Component", index, "vector length:", len(vec), "dims product:", np.prod(self.dims))
-
-        # Temporal plot
-        if True:
-            self.tempopral_widget.plot(x=np.arange(self.f.shape[1]), y=self.f[index, :], pen=pg.mkPen(color='b', width=2), name='data')
-            self.tempopral_widget.setLabel('bottom', 'Frame Number')
-            self.tempopral_widget.setLabel('left', 'Fluorescence')
-            self.tempopral_widget.showGrid(x=True, y=True)
-            self.tempopral_widget.setWindowTitle(f"Temporal Component {index}")
-        else:
-            temporal_fig = go.Figure(data=[go.Scatter(x=np.arange(self.f.shape[1]), y=self.f[index, :], line=dict(color='blue', width=2))])
-            temporal_fig.update_layout(title=f'Temporal Component {index}', xaxis_title='Frame', yaxis_title='Fluorescence')
-            self.tempopral_widget.setHtml(temporal_fig.to_html(include_plotlyjs='cdn'))
-
-        
-        # Spatial plot using pyqtgraph
-        self.spatial_widget.setImage(vec.reshape(self.dims).T, autoLevels=True)
-        
-
-    
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.resize(1000, 700)
-        #os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-gpu"
-        # Setup file menu with Open, Save, Save As
-        file_menu = self.menuBar().addMenu("File")
-        open_action = QAction("Open", self)
-        self.save_action = QAction("Save", self)
-        self.save_as_action = QAction("Save As", self)
-        file_menu.addAction(open_action)
-        file_menu.addAction(self.save_action)
-        file_menu.addAction(self.save_as_action)
-        
-        comp_menu = self.menuBar().addMenu("Compute")
-        self.detr_action = QAction("Detrend df/f", self)
-        comp_menu.addAction(self.detr_action)
-
-        view_menu = self.menuBar().addMenu("View")
-        self.opts_action = QAction("Opts", self)
-        view_menu.addAction(self.opts_action)
-        self.bg_action = QAction("Background", self)
-        view_menu.addAction(self.bg_action)
-        self.shifts_action = QAction("Shifts", self)
-        view_menu.addAction(self.shifts_action)
-        
-        exp_menu = self.menuBar().addMenu("Export")
-        self.npz_action = QAction("Pynapple npz", self)
-        exp_menu.addAction(self.npz_action)
-        
-        help_menu = self.menuBar().addMenu("Help")
-        about_action = QAction("About", self)
-        license_action = QAction("License", self)
-        source_action = QAction("Source", self)
-        help_menu.addAction(about_action)
-        help_menu.addAction(license_action)
-        help_menu.addAction(source_action)
-        
-        open_action.triggered.connect(self.open_file)
-        self.save_action.triggered.connect(self.save_file)
-        self.save_as_action.triggered.connect(self.save_file_as)
-        
-        # Create central widget and layout
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
-        
-        # Top plot: Temporal (full width)
-        self.temporal_view = QWebEngineView()
-        self.temporal_view.setContextMenuPolicy(Qt.NoContextMenu)
+        component_idx = self.spin_box.value()
+        # Update image data
+        img_data = self.b[:, component_idx].reshape(self.dims)
+        self.spatial_image.setImage(img_data, autoLevels=False)
+        self.spatial_widget.getPlotItem().setTitle(f"Spatial component {component_idx}")
+        # Update colorbar limits explicitly
+        min_val, max_val = np.min(img_data), np.max(img_data)
+        #self.spatial_image.setLevels([min_val, max_val])
+        self.colorbar_item.setLevels(values=[min_val, max_val])
+        # Update temporal plot (if needed)
+        temporal_data = self.f[component_idx, :]
+        self.temporal_widget.clear()
+        self.temporal_widget.plot(temporal_data, pen='b')
+        self.temporal_widget.getPlotItem().setTitle(f"Temporal component {component_idx}")
             
+class TopWidget(QWidget):
+    def __init__(self, main_window, parent=None):
+        super().__init__(parent)
+        self.main_window = main_window
+        
+        my_layot=QHBoxLayout(self)
+        
+                # Top plot: Temporal (full width)
+        self.temporal_view = pg.PlotWidget()
+          
+        left_layout = QVBoxLayout()
+        left_layout.setAlignment(Qt.AlignTop)
+
+        head_label=QLabel("Component:")
+        head_label.setStyleSheet("font-weight: bold;")
+        left_layout.addWidget(head_label)
+        
         self.component_spinbox = QSpinBox()
         self.component_spinbox.setMinimum(0)
         self.component_spinbox.setValue(0)
         self.component_spinbox.setFixedWidth(100)
+        left_layout.addWidget(self.component_spinbox)
         
-        self.component_params_r = QLabel("R: --")
-        self.component_params_SNR = QLabel("SNR: --")
-        self.component_params_CNN = QLabel("CNN: --")
-     
+        left_layout.addWidget(QLabel("Limit to:"))
         self.component_type = QComboBox()
         self.component_type.addItem("All")
         self.component_type.addItem("Good")
         self.component_type.addItem("Bad")
-       
-        left_layout = QVBoxLayout()
-        left_layout.setAlignment(Qt.AlignTop)
-        head_label=QLabel("Component:")
-        head_label.setStyleSheet("font-weight: bold;")
-        left_layout.addWidget(head_label)
-        left_layout.addWidget(self.component_spinbox)
-        left_layout.addWidget(QLabel("Limit to:"))
         left_layout.addWidget(self.component_type)
         
         head_label=QLabel("Plot:")
@@ -235,6 +165,10 @@ class MainWindow(QMainWindow):
         head_label=QLabel("Metrics:")
         head_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
         left_layout.addWidget(head_label)
+                
+        self.component_params_r = QLabel("R: --")
+        self.component_params_SNR = QLabel("SNR: --")
+        self.component_params_CNN = QLabel("CNN: --")
         left_layout.addWidget(self.component_params_r)
         left_layout.addWidget(self.component_params_SNR)
         left_layout.addWidget(self.component_params_CNN)
@@ -260,12 +194,18 @@ class MainWindow(QMainWindow):
         self.bad_toggle_button = bad_toggle_button
         # Add the toggle button layout to the left layout
         left_layout.addLayout(toggle_button_layout)
-
         
-        top_layout = QHBoxLayout()
-        top_layout.addLayout(left_layout)
-        top_layout.addWidget(self.temporal_view, stretch=1)
-        main_layout.addLayout(top_layout, stretch=1)
+        my_layot.addLayout(left_layout)
+        my_layot.addWidget(self.temporal_view, stretch=1)        
+        
+        self.setLayout(my_layot)
+        
+class ScatterWidget(QWidget):
+    def __init__(self, main_window, parent=None):
+        super().__init__(parent)
+        self.main_window = main_window
+        
+        my_layout = QHBoxLayout(self)
         # Bottom layout for Spatial and Parameters plots
         threshold_layout = QVBoxLayout()
         threshold_layout.setAlignment(Qt.AlignTop)
@@ -307,15 +247,78 @@ class MainWindow(QMainWindow):
         self.rval_thr_spinbox = QDoubleSpinBox()
         self.rval_thr_spinbox.setToolTip("Space correlation threshold. Components with correlation higher than this will get accepted")
         threshold_layout.addWidget(self.rval_thr_spinbox)
-        bottom_layout = QHBoxLayout()
-        self.spatial_view = QWebEngineView()
+        
+        my_layout.addLayout(threshold_layout)
+        
         self.parameters_view = QWebEngineView()
+        self.parameters_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.parameters_view.setContextMenuPolicy(Qt.NoContextMenu)
-        self.spatial_view.setContextMenuPolicy(Qt.NoContextMenu)
-        bottom_layout.addLayout(threshold_layout)
-        bottom_layout.addWidget(self.parameters_view, stretch=2)
-        bottom_layout.addWidget(self.spatial_view, stretch=2)
-        main_layout.addLayout(bottom_layout, stretch=1)
+        my_layout.addWidget(self.parameters_view )
+        
+        self.setLayout(my_layout)
+        
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.resize(1000, 700)
+        pg.setConfigOptions(background='w', foreground='k')
+        
+        # Setup file menu with Open, Save, Save As
+        file_menu = self.menuBar().addMenu("File")
+        open_action = QAction("Open", self)
+        self.save_action = QAction("Save", self)
+        self.save_as_action = QAction("Save As", self)
+        file_menu.addAction(open_action)
+        file_menu.addAction(self.save_action)
+        file_menu.addAction(self.save_as_action)
+        
+        comp_menu = self.menuBar().addMenu("Compute")
+        self.detr_action = QAction("Detrend df/f", self)
+        comp_menu.addAction(self.detr_action)
+
+        view_menu = self.menuBar().addMenu("View")
+        self.opts_action = QAction("Opts", self)
+        view_menu.addAction(self.opts_action)
+        self.bg_action = QAction("Background", self)
+        view_menu.addAction(self.bg_action)
+        self.shifts_action = QAction("Shifts", self)
+        view_menu.addAction(self.shifts_action)
+        
+        exp_menu = self.menuBar().addMenu("Export")
+        self.npz_action = QAction("Pynapple npz", self)
+        exp_menu.addAction(self.npz_action)
+        
+        help_menu = self.menuBar().addMenu("Help")
+        about_action = QAction("About", self)
+        license_action = QAction("License", self)
+        source_action = QAction("Source", self)
+        help_menu.addAction(about_action)
+        help_menu.addAction(license_action)
+        help_menu.addAction(source_action)
+        
+        open_action.triggered.connect(self.open_file)
+        self.save_action.triggered.connect(self.save_file)
+        self.save_as_action.triggered.connect(self.save_file_as)
+        
+        # Create central widget and layout       
+        main_layout = QSplitter(Qt.Vertical)
+        self.setCentralWidget(main_layout)
+        main_layout.setStyleSheet("QSplitter::handle { background-color: lightgray; }")
+        
+        self.temporal_widget = TopWidget(self, self)
+        main_layout.addWidget(self.temporal_widget)
+        
+        
+        bottom_layout = QSplitter( childrenCollapsible=False)
+        bottom_layout.setStyleSheet("QSplitter::handle { background-color: lightgray; }")
+        
+        self.scatter_widget= ScatterWidget(self, self)
+        bottom_layout.addWidget(self.scatter_widget)
+        
+        self.spatial_view = pg.PlotWidget()
+        bottom_layout.addWidget(self.spatial_view)
+        
+        main_layout.addWidget(bottom_layout)
         
         # Initialize variables
         self.hdf5_file = None
@@ -329,13 +332,18 @@ class MainWindow(QMainWindow):
         self.limit='All'
         
         # Connect events
-        self.component_spinbox.valueChanged.connect(self.on_component_spinbox_changed)
+        self.temporal_widget.component_spinbox.valueChanged.connect(self.on_component_spinbox_changed)
         self.resizeEvent = self.on_resize_figure
-        self.component_type.currentTextChanged.connect(self.on_limit_component_type_changed)
-        self.array_selector.currentTextChanged.connect(self.on_array_selector_changed)  
+        self.temporal_widget.component_type.currentTextChanged.connect(self.on_limit_component_type_changed)
+        self.temporal_widget.array_selector.currentTextChanged.connect(self.on_array_selector_changed)  
         self.detr_action.triggered.connect(self.on_detrend_action)
         self.npz_action.triggered.connect(self.on_npz_action)
-        for widget in (self.SNR_lowest_spinbox, self.min_SNR_spinbox, self.cnn_lowest_spinbox, self.min_cnn_thr_spinbox, self.rval_lowest_spinbox, self.rval_thr_spinbox):
+        for widget in (self.scatter_widget.SNR_lowest_spinbox, 
+                       self.scatter_widget.min_SNR_spinbox, 
+                       self.scatter_widget.cnn_lowest_spinbox, 
+                       self.scatter_widget.min_cnn_thr_spinbox, 
+                       self.scatter_widget.rval_lowest_spinbox, 
+                       self.scatter_widget.rval_thr_spinbox):
             widget.valueChanged.connect(self.on_threshold_spinbox_changed)
         self.opts_action.triggered.connect(self.on_opts_action)
         self.shifts_action.triggered.connect(self.on_shifts_action)
@@ -346,7 +354,7 @@ class MainWindow(QMainWindow):
         self.bridge = PythonBridge(self)
         self.channel = QWebChannel()
         self.channel.registerObject("pythonBridge", self.bridge)
-        self.parameters_view.page().setWebChannel(self.channel)
+        self.scatter_widget.parameters_view.page().setWebChannel(self.channel)
         
         # Update figure and state
         self.load_state()
@@ -405,12 +413,13 @@ class MainWindow(QMainWindow):
         self.update_component_spinbox(self.selected_component)
         self.update_selected_component_on_scatterplot(self.selected_component)
         self.plot_temporal()
+        self.plot_spatial()
         
     def update_component_spinbox(self, value):
-        if self.component_spinbox.value() != value:
-            self.component_spinbox.blockSignals(True)
-            self.component_spinbox.setValue(value)
-            self.component_spinbox.blockSignals(False)
+        if self.temporal_widget.component_spinbox.value() != value:
+            self.temporal_widget.component_spinbox.blockSignals(True)
+            self.temporal_widget.component_spinbox.setValue(value)
+            self.temporal_widget.component_spinbox.blockSignals(False)
     
     def on_resize_figure(self, event):
         self.update_title() 
@@ -441,7 +450,7 @@ class MainWindow(QMainWindow):
                   'noisyC': 'Temporal traces (including residuals plus background)', 
                   'C_on': '?'}
         self.plot_temporal()
-        self.array_selector.setToolTip(tooltips[text])
+        self.temporal_widget.array_selector.setToolTip(tooltips[text])
     
     def construct_threshold_gridline_data(self):
         if self.cnm is None:
@@ -462,12 +471,12 @@ class MainWindow(QMainWindow):
     def on_threshold_spinbox_changed(self, value):
         if self.cnm.estimates.idx_components is None:
             return
-        self.cnm.params.quality['SNR_lowest'] = self.SNR_lowest_spinbox.value()
-        self.cnm.params.quality['min_SNR'] = self.min_SNR_spinbox.value()
-        self.cnm.params.quality['cnn_lowest'] = self.cnn_lowest_spinbox.value()
-        self.cnm.params.quality['min_cnn_thr'] = self.min_cnn_thr_spinbox.value()
-        self.cnm.params.quality['rval_lowest'] = self.rval_lowest_spinbox.value()
-        self.cnm.params.quality['rval_thr'] = self.rval_thr_spinbox.value()
+        self.cnm.params.quality['SNR_lowest'] = self.scatter_widget.SNR_lowest_spinbox.value()
+        self.cnm.params.quality['min_SNR'] = self.scatter_widget.min_SNR_spinbox.value()
+        self.cnm.params.quality['cnn_lowest'] = self.scatter_widget.cnn_lowest_spinbox.value()
+        self.cnm.params.quality['min_cnn_thr'] = self.scatter_widget.min_cnn_thr_spinbox.value()
+        self.cnm.params.quality['rval_lowest'] = self.scatter_widget.rval_lowest_spinbox.value()
+        self.cnm.params.quality['rval_thr'] = self.scatter_widget.rval_thr_spinbox.value()
         self.file_changed = True
         self.update_title()
         self.update_threshold_lines_on_scatterplot()
@@ -475,12 +484,12 @@ class MainWindow(QMainWindow):
         
     def update_treshold_spinboxes(self):
         if self.cnm is None:
-            self.SNR_lowest_spinbox.setEnabled(False)
-            self.min_SNR_spinbox.setEnabled(False)
-            self.cnn_lowest_spinbox.setEnabled(False)
-            self.min_cnn_thr_spinbox.setEnabled(False)
-            self.rval_lowest_spinbox.setEnabled(False)
-            self.rval_thr_spinbox.setEnabled(False)
+            self.scatter_widget.SNR_lowest_spinbox.setEnabled(False)
+            self.scatter_widget.min_SNR_spinbox.setEnabled(False)
+            self.scatter_widget.cnn_lowest_spinbox.setEnabled(False)
+            self.scatter_widget.min_cnn_thr_spinbox.setEnabled(False)
+            self.scatter_widget.rval_lowest_spinbox.setEnabled(False)
+            self.scatter_widget.rval_thr_spinbox.setEnabled(False)
             return
         if self.cnm.estimates.cnn_preds is None:
             cnn_range = (0, 1)
@@ -495,42 +504,42 @@ class MainWindow(QMainWindow):
         else:
             snr_range = (np.min(self.cnm.estimates.SNR_comp), np.max(self.cnm.estimates.SNR_comp))       
         
-        self.SNR_lowest_spinbox.blockSignals(True)
-        self.SNR_lowest_spinbox.setEnabled(True)
-        self.SNR_lowest_spinbox.setRange(*snr_range)
-        self.SNR_lowest_spinbox.setSingleStep(0.1)
-        self.SNR_lowest_spinbox.setValue(self.cnm.params.quality['SNR_lowest'])
-        self.SNR_lowest_spinbox.blockSignals(False)
-        self.min_SNR_spinbox.blockSignals(True)
-        self.min_SNR_spinbox.setEnabled(True)
-        self.min_SNR_spinbox.setRange(*snr_range)
-        self.min_SNR_spinbox.setSingleStep(0.1)        
-        self.min_SNR_spinbox.setValue(self.cnm.params.quality['min_SNR'])
-        self.min_SNR_spinbox.blockSignals(False)
-        self.cnn_lowest_spinbox.blockSignals(True)
-        self.cnn_lowest_spinbox.setEnabled(True)
-        self.cnn_lowest_spinbox.setRange(*cnn_range)
-        self.cnn_lowest_spinbox.setSingleStep(0.1)     
-        self.cnn_lowest_spinbox.setValue(self.cnm.params.quality['cnn_lowest'])
-        self.cnn_lowest_spinbox.blockSignals(False)
-        self.min_cnn_thr_spinbox.blockSignals(True)
-        self.min_cnn_thr_spinbox.setEnabled(True)
-        self.min_cnn_thr_spinbox.setRange(*cnn_range)
-        self.min_cnn_thr_spinbox.setSingleStep(0.1)
-        self.min_cnn_thr_spinbox.setValue(self.cnm.params.quality['min_cnn_thr'])
-        self.min_cnn_thr_spinbox.blockSignals(False)
-        self.rval_lowest_spinbox.blockSignals(True)
-        self.rval_lowest_spinbox.setEnabled(True)
-        self.rval_lowest_spinbox.setRange(*rval_range)
-        self.rval_lowest_spinbox.setSingleStep(0.1)       
-        self.rval_lowest_spinbox.setValue(self.cnm.params.quality['rval_lowest'])
-        self.rval_lowest_spinbox.blockSignals(False)
-        self.rval_thr_spinbox.blockSignals(True)
-        self.rval_thr_spinbox.setEnabled(True)
-        self.rval_thr_spinbox.setRange(*rval_range)
-        self.rval_thr_spinbox.setSingleStep(0.1)
-        self.rval_thr_spinbox.setValue(self.cnm.params.quality['rval_thr'])
-        self.rval_thr_spinbox.blockSignals(False)
+        self.scatter_widget.SNR_lowest_spinbox.blockSignals(True)
+        self.scatter_widget.SNR_lowest_spinbox.setEnabled(True)
+        self.scatter_widget.SNR_lowest_spinbox.setRange(*snr_range)
+        self.scatter_widget.SNR_lowest_spinbox.setSingleStep(0.1)
+        self.scatter_widget.SNR_lowest_spinbox.setValue(self.cnm.params.quality['SNR_lowest'])
+        self.scatter_widget.SNR_lowest_spinbox.blockSignals(False)
+        self.scatter_widget.min_SNR_spinbox.blockSignals(True)
+        self.scatter_widget.min_SNR_spinbox.setEnabled(True)
+        self.scatter_widget.min_SNR_spinbox.setRange(*snr_range)
+        self.scatter_widget.min_SNR_spinbox.setSingleStep(0.1)        
+        self.scatter_widget.min_SNR_spinbox.setValue(self.cnm.params.quality['min_SNR'])
+        self.scatter_widget.min_SNR_spinbox.blockSignals(False)
+        self.scatter_widget.cnn_lowest_spinbox.blockSignals(True)
+        self.scatter_widget.cnn_lowest_spinbox.setEnabled(True)
+        self.scatter_widget.cnn_lowest_spinbox.setRange(*cnn_range)
+        self.scatter_widget.cnn_lowest_spinbox.setSingleStep(0.1)     
+        self.scatter_widget.cnn_lowest_spinbox.setValue(self.cnm.params.quality['cnn_lowest'])
+        self.scatter_widget.cnn_lowest_spinbox.blockSignals(False)
+        self.scatter_widget.min_cnn_thr_spinbox.blockSignals(True)
+        self.scatter_widget.min_cnn_thr_spinbox.setEnabled(True)
+        self.scatter_widget.min_cnn_thr_spinbox.setRange(*cnn_range)
+        self.scatter_widget.min_cnn_thr_spinbox.setSingleStep(0.1)
+        self.scatter_widget.min_cnn_thr_spinbox.setValue(self.cnm.params.quality['min_cnn_thr'])
+        self.scatter_widget.min_cnn_thr_spinbox.blockSignals(False)
+        self.scatter_widget.rval_lowest_spinbox.blockSignals(True)
+        self.scatter_widget.rval_lowest_spinbox.setEnabled(True)
+        self.scatter_widget.rval_lowest_spinbox.setRange(*rval_range)
+        self.scatter_widget.rval_lowest_spinbox.setSingleStep(0.1)       
+        self.scatter_widget.rval_lowest_spinbox.setValue(self.cnm.params.quality['rval_lowest'])
+        self.scatter_widget.rval_lowest_spinbox.blockSignals(False)
+        self.scatter_widget.rval_thr_spinbox.blockSignals(True)
+        self.scatter_widget.rval_thr_spinbox.setEnabled(True)
+        self.scatter_widget.rval_thr_spinbox.setRange(*rval_range)
+        self.scatter_widget.rval_thr_spinbox.setSingleStep(0.1)
+        self.scatter_widget.rval_thr_spinbox.setValue(self.cnm.params.quality['rval_thr'])
+        self.scatter_widget.rval_thr_spinbox.blockSignals(False)
         
         
     def on_scatter_point_clicked(self, index):
@@ -544,16 +553,17 @@ class MainWindow(QMainWindow):
         self.update_component_spinbox(self.selected_component)
         self.update_selected_component_on_scatterplot(self.selected_component)
         self.plot_temporal()
+        self.plot_spatial()
     
     def update_threshold_lines_on_scatterplot(self):
         if self.cnm.estimates.idx_components is None:
             return
-        lines=self.construct_threshold_gridline_data()
+        lines=self.construct_threshold_gridline_data() 
         lines_json = json.dumps(lines)
         # Build the JS command calling updateThresholdLines, ensuring proper quoting
         js_cmd = f'window.updateThresholdLines({json.dumps(lines_json)});'
         #print(f"Calling JS for threshold lines: {js_cmd}")
-        self.parameters_view.page().runJavaScript(js_cmd)
+        self.scatter_widget.parameters_view.page().runJavaScript(js_cmd)
         
     def update_selected_component_on_scatterplot(self, index):
         if self.cnm is None or self.cnm.estimates.r_values is None:
@@ -569,7 +579,7 @@ class MainWindow(QMainWindow):
             color = 'magenta'
         js_cmd = f'window.updateSelectedTrace({x_val}, {y_val}, {z_val}, "{color}");'
         #print(f'Calling JS: {js_cmd}')
-        self.parameters_view.page().runJavaScript(js_cmd)
+        self.scatter_widget.parameters_view.page().runJavaScript(js_cmd)
         
     def on_detrend_action(self):
         """
@@ -641,8 +651,8 @@ class MainWindow(QMainWindow):
             self.background_window.raise_()
             self.background_window.show()
             return
-        print(self.cnm.dims)
-        self.background_window = BackgroundWindow(self.cnm.estimates.b, self.cnm.estimates.f, self.cnm.dims)
+        print(self.dims)
+        self.background_window = BackgroundWindow(self.cnm.estimates.b, self.cnm.estimates.f, self.dims)
         self.background_window.show()
         
     def open_file(self):        
@@ -672,11 +682,13 @@ class MainWindow(QMainWindow):
             self.hdf5_path = os.path.abspath(filename)
             self.file_changed = False
             
-            #some corrections
-            #if self.cnm.params.data['dims'] is None:
-            #    if hasattr(self.cnm.estimates, 'Cn'):
-            #        self.cnm.params.data['dims'] = self.cnm.estimates.Cn.shape
-            #        print("dims corrected from Cn")
+            if self.online:
+                self.dims=self.cnm.params.data['dims']
+            else:         
+                self.dims=self.cnm.dims
+            self.dims=(self.dims[1], self.dims[0])
+            print(f'Data frame dimensions: {self.dims}')
+                    
             
             self.save_state()
             self.update_all()
@@ -686,10 +698,10 @@ class MainWindow(QMainWindow):
         self.close_child_windows()
                     
         if  self.cnm is None:
-            self.component_spinbox.setEnabled(False)
+            self.temporal_widget.component_spinbox.setEnabled(False)
             self.detr_action.setEnabled(False)
             self.npz_action.setEnabled(False)
-            self.array_selector.setEnabled(False)
+            self.temporal_widget.array_selector.setEnabled(False)
             self.bg_action.setEnabled(False)
             self.shifts_action.setEnabled(False)
             self.opts_action.setEnabled(False)
@@ -708,22 +720,22 @@ class MainWindow(QMainWindow):
             if (value is not None) :
                 selectable_array_names.append(array_name)
         print("Selectable array names:", selectable_array_names)
-        previous_selected_array = self.array_selector.currentText()
-        self.array_selector.blockSignals(True)
-        self.array_selector.clear()
+        previous_selected_array = self.temporal_widget.array_selector.currentText()
+        self.temporal_widget.array_selector.blockSignals(True)
+        self.temporal_widget.array_selector.clear()
         for array_name in selectable_array_names:
-            self.array_selector.addItem(array_name)
+            self.temporal_widget.array_selector.addItem(array_name)
         if previous_selected_array in selectable_array_names:
-            self.array_selector.setCurrentText(previous_selected_array)
-        self.array_selector.setEnabled(True) 
-        self.array_selector.blockSignals(False)
+            self.temporal_widget.array_selector.setCurrentText(previous_selected_array)
+        self.temporal_widget.array_selector.setEnabled(True) 
+        self.temporal_widget.array_selector.blockSignals(False)
          
         numcomps=self.cnm.estimates.A.shape[-1]
-        self.component_spinbox.setMaximum(numcomps - 1)
+        self.temporal_widget.component_spinbox.setMaximum(numcomps - 1)
         self.selected_component = min(numcomps-1, self.selected_component)
         self.update_component_spinbox(self.selected_component)
-        self.total_label.setText(f"    Total: {numcomps}")
-        self.component_spinbox.setEnabled(True)
+        self.scatter_widget.total_label.setText(f"    Total: {numcomps}")
+        self.temporal_widget.component_spinbox.setEnabled(True)
                     
         self.detr_action.setEnabled(self.cnm.estimates.F_dff is None)
         self.npz_action.setEnabled(True)
@@ -749,129 +761,135 @@ class MainWindow(QMainWindow):
 
     def plot_temporal(self):
         if self.cnm is None:
-            fig = go.Figure()
-            fig.update_layout(annotations=[dict(
-                text="No data loaded yet.\nOpen CaImAn HDF5 file using the file menu.",
-                xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False
-            )])
-            html = fig.to_html(include_plotlyjs='cdn')
-            self.temporal_view.setHtml(html)
-            self.component_type.setEnabled(False)
-            self.good_toggle_button.setEnabled(False)
-            self.bad_toggle_button.setEnabled(False)
+            text="No data loaded yet.\nOpen CaImAn HDF5 file using the file menu."
+            text = pg.TextItem(text=text, anchor=(0.5, 0.5), color='k')
+            self.temporal_widget.temporal_view.clear()
+            self.temporal_widget.temporal_view.addItem(text)
+            self.temporal_widget.temporal_view.getPlotItem().showGrid(False)
+            self.temporal_widget.temporal_view.getPlotItem().showAxes(False)
+            self.temporal_widget.temporal_view.setBackground(QColor(200, 200, 210, 127))
             return
         
         index = self.selected_component
+        array_text=self.temporal_widget.array_selector.currentText()
         
+        self.temporal_widget.temporal_view.clear()
+        self.temporal_widget.temporal_view.setBackground(None)
+        self.temporal_widget.temporal_view.setDefaultPadding( 0.0 )
+        self.temporal_widget.temporal_view.getPlotItem().showGrid(x=True, y=True, alpha=0.3)
+        self.temporal_widget.temporal_view.getPlotItem().showAxes(True, showValues=(True, False, False, True))
+        self.temporal_widget.temporal_view.getPlotItem().setContentsMargins(0, 0, 10, 0)  # add margin to the right
+        self.temporal_widget.temporal_view.getPlotItem().setTitle(f'Temporal Component ({array_text}, {index})')
+        self.temporal_widget.temporal_view.setLabel('bottom', 'Frame Number')
+        self.temporal_widget.temporal_view.setLabel('left', 'Value')
         
         #array_names = ["C", "f", "YrA", "F_dff", "R", "S", "noisyC", "C_on"]
-        array_text=self.array_selector.currentText()
         length=self.cnm.estimates.C.shape[-1] #always present
         y=getattr(self.cnm.estimates, array_text)[index, :]
         if len(y) > length:
-            y = y[-length:] # in case of noisyC or C_on
-            
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            y = y,
-            mode = 'lines',
-            line = dict(color='blue'),
-            name = f'Temporal Component {array_text} {index}'
-        ))
-        fig.update_layout(
-            yaxis=dict(range=[0, None]),
-            margin=dict(l=1, r=1, t=10, b=1)
-        )
-        html = fig.to_html(include_plotlyjs='cdn')
-        self.temporal_view.setHtml(html)    
+            y = y[-length:] # in case of noisyC or C_on   
+        self.temporal_widget.temporal_view.plot(x=np.arange(len(y)), y=y, pen=pg.mkPen(color='b', width=2), name=f'Temporal component {array_text} {index}')   
 
         if not self.cnm.estimates.r_values is None:
             r = self.cnm.estimates.r_values[index]
             max_r = np.max(self.cnm.estimates.r_values)
             min_r = np.min(self.cnm.estimates.r_values)
             color = f"rgb({int(255*(1-(r-min_r)/(max_r-min_r)))}, {int(255*(r-min_r)/(max_r-min_r))}, 0)"
-            self.component_params_r.setText(f"    Rval: {np.format_float_positional(r, precision=2)}")
-            self.component_params_r.setToolTip(f"cnm.estimates.r_values[{index}]")
-            self.component_params_r.setStyleSheet(f"color: {color}")
+            self.temporal_widget.component_params_r.setText(f"    Rval: {np.format_float_positional(r, precision=2)}")
+            self.temporal_widget.component_params_r.setToolTip(f"cnm.estimates.r_values[{index}]")
+            self.temporal_widget.component_params_r.setStyleSheet(f"color: {color}")
             
-            self.component_params_SNR.setText(f"    SNR: {np.format_float_positional(self.cnm.estimates.SNR_comp[index], precision=2)}")
-            self.component_params_SNR.setToolTip(f"cnm.estimates.SNR_comp[{index}]")
-            self.component_params_CNN.setText(f"    CNN: {np.format_float_positional(self.cnm.estimates.cnn_preds[index], precision=2)}")
-            self.component_params_CNN.setToolTip(f"cnm.estimates.cnn_preds[{index}]")
+            self.temporal_widget.component_params_SNR.setText(f"    SNR: {np.format_float_positional(self.cnm.estimates.SNR_comp[index], precision=2)}")
+            self.temporal_widget.component_params_SNR.setToolTip(f"cnm.estimates.SNR_comp[{index}]")
+            self.temporal_widget.component_params_CNN.setText(f"    CNN: {np.format_float_positional(self.cnm.estimates.cnn_preds[index], precision=2)}")
+            self.temporal_widget.component_params_CNN.setToolTip(f"cnm.estimates.cnn_preds[{index}]")
         else:
-            self.component_params_r.setText("    R: --")
-            self.component_params_r.setToolTip("use evaluate components to compute r values")
-            self.component_params_r.setStyleSheet("color: black")
-            self.component_params_SNR.setText("    SNR: --")
-            self.component_params_SNR.setToolTip("use evaluate components to compute SNR")
-            self.component_params_SNR.setStyleSheet("color: black")
-            self.component_params_CNN.setText("    CNN: --")
-            self.component_params_CNN.setToolTip("use evaluate components to compute CNN predictions")
-            self.component_params_CNN.setStyleSheet("color: black")
+            self.temporal_widget.component_params_r.setText("    R: --")
+            self.temporal_widget.component_params_r.setToolTip("use evaluate components to compute r values")
+            self.temporal_widget.component_params_r.setStyleSheet("color: black")
+            self.temporal_widget.component_params_SNR.setText("    SNR: --")
+            self.temporal_widget.component_params_SNR.setToolTip("use evaluate components to compute SNR")
+            self.temporal_widget.component_params_SNR.setStyleSheet("color: black")
+            self.temporal_widget.component_params_CNN.setText("    CNN: --")
+            self.temporal_widget.component_params_CNN.setToolTip("use evaluate components to compute CNN predictions")
+            self.temporal_widget.component_params_CNN.setStyleSheet("color: black")
             
         if not self.cnm.estimates.idx_components is None:
-            self.component_type.setEnabled(True)
+            self.temporal_widget.component_type.setEnabled(True)
             if index in self.cnm.estimates.idx_components:
-                self.good_toggle_button.setChecked(True)
-                self.bad_toggle_button.setChecked(False)                
+                self.temporal_widget.good_toggle_button.setChecked(True)
+                self.temporal_widget.bad_toggle_button.setChecked(False)                
             else:
-                self.good_toggle_button.setChecked(False)
-                self.bad_toggle_button.setChecked(True)
-            self.good_toggle_button.setEnabled(True)
-            self.bad_toggle_button.setEnabled(True)
-            self.good_label.setText(f"    Good: {len(self.cnm.estimates.idx_components)}")
-            self.good_label.setEnabled(True)
-            self.bad_label.setText(f"    Bad: {len(self.cnm.estimates.idx_components_bad)}")
-            self.bad_label.setEnabled(True)  
+                self.temporal_widget.good_toggle_button.setChecked(False)
+                self.temporal_widget.bad_toggle_button.setChecked(True)
+            self.temporal_widget.good_toggle_button.setEnabled(True)
+            self.temporal_widget.bad_toggle_button.setEnabled(True)
+            self.scatter_widget.good_label.setText(f"    Good: {len(self.cnm.estimates.idx_components)}")
+            self.scatter_widget.good_label.setEnabled(True)
+            self.scatter_widget.bad_label.setText(f"    Bad: {len(self.cnm.estimates.idx_components_bad)}")
+            self.scatter_widget.bad_label.setEnabled(True)  
         else:
-            self.good_toggle_button.setChecked(False)
-            self.good_toggle_button.setEnabled(False)
-            self.bad_toggle_button.setChecked(False)
-            self.bad_toggle_button.setEnabled(False)
-            self.component_type.setEnabled(False)
-            self.component_type.setCurrentText('All')
-            self.good_label.setText("    Good: --")
-            self.good_label.setEnabled(False)
-            self.bad_label.setText("    Bad: --")
-            self.bad_label.setEnabled(False)   
+            self.temporal_widget.good_toggle_button.setChecked(False)
+            self.temporal_widget.good_toggle_button.setEnabled(False)
+            self.temporal_widget.bad_toggle_button.setChecked(False)
+            self.temporal_widget.bad_toggle_button.setEnabled(False)
+            self.temporal_widget.component_type.setEnabled(False)
+            self.temporal_widget.component_type.setCurrentText('All')
+            self.scatter_widget.good_label.setText("    Good: --")
+            self.scatter_widget.good_label.setEnabled(False)
+            self.scatter_widget.bad_label.setText("    Bad: --")
+            self.scatter_widget.bad_label.setEnabled(False)   
             
     def plot_spatial(self):
         if self.cnm is None:
-            fig = go.Figure()
-            fig.update_layout(annotations=[dict(
-                text="No data loaded yet",
-                xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False
-            )])
-            html = fig.to_html(include_plotlyjs='cdn')
-            self.spatial_view.setHtml(html)
+            text="No data loaded yet"
+            text = pg.TextItem(text=text, anchor=(0.5, 0.5), color='k')
+            self.spatial_view.clear()
+            self.spatial_view.addItem(text)
+            self.spatial_view.getPlotItem().showGrid(False)
+            self.spatial_view.getPlotItem().showAxes(False)
+            self.spatial_view.setBackground(QColor(200, 200, 210, 127))
             return
 
-        index =0
+        component_idx = self.selected_component
+        array_text="A"
+        component_footprint = np.reshape(self.cnm.estimates.A[:, component_idx].toarray(), self.dims) #(self.dims[1], self.dims[0]), order='F').T
+
+        self.spatial_view.clear()
+        self.spatial_view.setBackground(None)
+        # Explicitly remove previous colorbar if exists
+        if hasattr(self, 'colorbar_item'):
+            self.spatial_view.getPlotItem().layout.removeItem(self.colorbar_item)
+            self.colorbar_item.deleteLater()
+            del self.colorbar_item
+                   
+        self.spatial_image = pg.ImageItem()
+        self.spatial_view.addItem( self.spatial_image )
+        self.colorbar_item=self.spatial_view.getPlotItem().addColorBar( self.spatial_image, colorMap='viridis', rounding=1e-10) # , interactive=False)
         
-        vec = self.cnm.estimates.b[:, index]
-        print("Component", index, "vector length:", len(vec), "dims produ")
-        print("Has NaNs:", np.isnan(vec).any())
-        print("Has infs:", np.isinf(vec).any())
-        print("Min:", np.nanmin(vec), "Max:", np.nanmax(vec))
-        vec=vec.reshape(self.cnm.dims)
-        vec=vec*1000
-        print(vec.shape)
-        x = np.linspace(0, 4*np.pi, 512)
-        y = np.linspace(0, 2*np.pi, 512)
-        X, Y = np.meshgrid(x, y)
-        Z = np.sin(X) * np.sin(Y)  # Calculating the wave
-        #Z=vec
-        # Create a heatmap trace using Plotly
-        fig = go.Figure(data=go.Heatmap(z=Z, colorscale='viridis'))
-        fig.update_layout(
-            title=f'Spatial Component {index}',
-            margin=dict(l=10, r=10, t=50, b=10)
-        )
-        
-        # Generate HTML and set it in the QWebEngineView widget.
-        html = fig.to_html(include_plotlyjs='cdn', config={"responsive": True})
-        self.spatial_view.setHtml(html)
-        
+         # Restore axis and grid configurations explicitly
+        plot_item = self.spatial_view.getPlotItem()
+        plot_item.setAspectLocked(True)
+        plot_item.showAxes(True, showValues=(True, False, False, True))
+        plot_item.showGrid(x=False, y=False)
+        plot_item.setMenuEnabled(False)
+        plot_item.setTitle(f'Spatial component ({array_text}, {component_idx})')
+
+        # Configure axis tick lengths explicitly
+        for side in ('top', 'right'):
+            ax = plot_item.getAxis(side)
+            ax.setStyle(tickLength=0)
+        for side in ('left', 'bottom'):
+            ax = plot_item.getAxis(side)
+            ax.setStyle(tickLength=10)      
+        self.spatial_view.setDefaultPadding( 0.0 )
+            
+        # Update image data
+        self.spatial_image.setImage(component_footprint, autoLevels=False)
+        # Update colorbar limits explicitly
+        min_val, max_val = np.min(component_footprint), np.max(component_footprint)
+        self.colorbar_item.setLevels(values=[min_val, max_val])
+
                 
     def plot_parameters(self):
         if self.cnm is None or self.cnm.estimates.r_values is None:
@@ -881,7 +899,7 @@ class MainWindow(QMainWindow):
                 xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False
             )])
             html = fig.to_html(include_plotlyjs='cdn')
-            self.parameters_view.setHtml(html)
+            self.scatter_widget.parameters_view.setHtml(html)
             return
         
         num_components = self.cnm.estimates.r_values.shape[0]
@@ -1001,7 +1019,7 @@ class MainWindow(QMainWindow):
         }
         </script>
         """
-        self.parameters_view.setHtml(html)
+        self.scatter_widget.parameters_view.setHtml(html)
         
     def update_title(self):
         if self.hdf5_file is None:

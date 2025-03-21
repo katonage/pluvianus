@@ -32,7 +32,7 @@ class PlotlyWindow(QMainWindow):
 
         # Generate sinusoidal data
         x = np.linspace(0, 4 * np.pi, 400)
-        y = np.linspace(0, 2 * np.pi, 500)
+        y = np.linspace(0, 2 * np.pi, 300)
         X, Y = np.meshgrid(x, y)
         Z = np.sin(X) * np.sin(Y)
 

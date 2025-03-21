@@ -1,7 +1,3 @@
-import pyqtgraph.examples
-#pyqtgraph.examples.run()
-
-
 """
 This example demonstrates the use of ColorBarItem, which displays a simple interactive color bar.
 """
@@ -19,8 +15,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # Set the global background color for pyqtgraph
         
          
-        data = np.fromfunction(lambda i, j: (1+0.3*np.sin(i)) * (i)**2 + (j)**2, (100, 100))
-        
+        data = np.fromfunction(lambda i, j: (1+0.3*np.sin(i)) * (i)**2 + (j)**2, (100, 100))/10000
+        print(np.max(data))
         
         pg.setConfigOption('background', 'w')  # Set to white, you can change 'w' to any color you prefer
         pg.setConfigOption('foreground', 'k')  # Set to white, you can change 'w' to any color you prefer
@@ -35,7 +31,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Basic steps to create a false color image with color bar:
         i1 = pg.ImageItem(image=data)
         p1.addItem( i1 )
-        p1.addColorBar( i1, colorMap='viridis',values=(0, 30_000)) # , interactive=False)
+        p1.addColorBar( i1, colorMap='viridis') # , interactive=False)
         
         for side in ( 'top', 'right'):
             ax = p1.getAxis(side)
