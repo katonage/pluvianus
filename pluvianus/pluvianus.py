@@ -12,6 +12,7 @@ import pyqtgraph as pg
 import plotly.graph_objects as go
 import json
 import os
+import tempfile
 import numpy as np
 
 import caiman as cm
@@ -765,6 +766,7 @@ class MainWindow(QMainWindow):
             text = pg.TextItem(text=text, anchor=(0.5, 0.5), color='k')
             self.temporal_widget.temporal_view.clear()
             self.temporal_widget.temporal_view.addItem(text)
+            self.temporal_widget.temporal_view.getPlotItem().getViewBox().setMouseEnabled(x=False, y=False)
             self.temporal_widget.temporal_view.getPlotItem().showGrid(False)
             self.temporal_widget.temporal_view.getPlotItem().showAxes(False)
             self.temporal_widget.temporal_view.setBackground(QColor(200, 200, 210, 127))
@@ -845,6 +847,7 @@ class MainWindow(QMainWindow):
             text="No data loaded yet"
             text = pg.TextItem(text=text, anchor=(0.5, 0.5), color='k')
             self.spatial_view.clear()
+            self.spatial_view.getPlotItem().getViewBox().setMouseEnabled(x=False, y=False)
             self.spatial_view.addItem(text)
             self.spatial_view.getPlotItem().showGrid(False)
             self.spatial_view.getPlotItem().showAxes(False)
@@ -1041,12 +1044,14 @@ class MainWindow(QMainWindow):
             
     def save_state(self):
         filename = "pluvianus_state.json"
+        filename = os.path.join(tempfile.gettempdir(), filename)
         state = {"figure_size": (self.width(), self.height()), "path": self.hdf5_path}
         with open(filename, 'w') as f:
             json.dump(state, f)
         
     def load_state(self):
         filename = "pluvianus_state.json"
+        filename = os.path.join(tempfile.gettempdir(), filename)
         if not os.path.exists(filename):
             return
         with open(filename, 'r') as f:
