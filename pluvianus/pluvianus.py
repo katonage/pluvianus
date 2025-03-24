@@ -249,10 +249,10 @@ class MainWindow(QMainWindow):
         bottom_layout_splitter.setSizes([1, 2])
         
         # Initialize variables
+        self.cnm = None
         self.hdf5_file = None
         self.file_changed = False
         self.online = False
-        self.cnm = None
         self.selected_component = 0
         self.time = 0
         self.limit='All'
@@ -578,6 +578,7 @@ class MainWindow(QMainWindow):
                 print('File loaded (CNMF):', filename)
             except Exception as e:
                 print('Could not load file')
+                self.cnm=None
                 QMessageBox.critical(self, 'Error opening file', 'File could not be opened: ' + filename)
                 return
         self.hdf5_file = filename
@@ -1013,7 +1014,7 @@ class MainWindow(QMainWindow):
         self.temporal_widget.temporal_view.setRange(xRange=xrange, padding=0.0)    
         
     def update_title(self):
-        if self.hdf5_file is None:
+        if self.cnm is None:
             self.setWindowTitle('Pluvianus: CaImAn result browser')
             self.save_action.setEnabled(False)
             self.save_as_action.setEnabled(False)
