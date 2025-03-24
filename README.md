@@ -27,8 +27,10 @@ A feature-rich brosing, editing GUI for manual data verification and acceptance 
 
 ### Next
 * autorange on temporal curves considering all components
+* optional ms and um display on axes
 * Movement correction of raw files from OnACID pipeline
 * step through components sorted according to metrics
+* beginnar and advanced modes
 * ask for CaImAn dependencies 
 
 #### Expertiese wanted
