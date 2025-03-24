@@ -26,10 +26,11 @@ A feature-rich brosing, editing GUI for manual data verification and acceptance 
 * keyboard shortcuts
 
 ### Next
+* step through components sorted according to metrics
 * autorange on temporal curves considering all components
 * optional ms and um display on axes
 * Movement correction of raw files from OnACID pipeline
-* step through components sorted according to metrics
+* Edit parameters of the compute menu options
 * beginnar and advanced modes
 * ask for CaImAn dependencies 
 
