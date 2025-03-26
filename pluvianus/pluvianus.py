@@ -1,6 +1,6 @@
 import sys
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QSplitter,QLayout, QCheckBox,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QSplitter,QScrollArea, QCheckBox,QSlider,
     QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog, QSizePolicy
 )
 from PySide6.QtGui import QAction, QColor
@@ -16,6 +16,11 @@ import tempfile
 import numpy as np
 import glob
 
+import pynapple as nap
+from scipy.signal.windows import gaussian
+
+import inspect
+import time
 
 import caiman as cm # type: ignore
 from caiman.source_extraction import cnmf # type: ignore
@@ -168,12 +173,14 @@ class MainWindow(QMainWindow):
         open_action.setShortcut('Ctrl+O')
 
         self.save_action = QAction('Save', self)
+        self.save_action.setShortcut('Ctrl+S')
         self.save_as_action = QAction('Save As...', self)
         file_menu.addAction(open_action)
         file_menu.addAction(self.save_action)
         file_menu.addAction(self.save_as_action)
         file_menu.addSeparator()
         self.open_data_action = QAction('Open Data Array...', self)
+        self.open_data_action.setShortcut('Ctrl+D')
         file_menu.addAction(self.open_data_action)
         file_menu.addSeparator()
         self.open_cn_image_action = QAction('Open Local Correlation Image...', self)
@@ -184,16 +191,26 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.open_max_image_action)
         self.open_std_image_action = QAction('Open Std Image...', self)
         file_menu.addAction(self.open_std_image_action)
+        self.save_cn_image_action = QAction('Save Local Correlation Image...', self)
+        file_menu.addAction(self.save_cn_image_action)
+        self.save_mean_image_action = QAction('Save Mean Image...', self)
+        file_menu.addAction(self.save_mean_image_action)
+        self.save_max_image_action = QAction('Save Max Image...', self)
+        file_menu.addAction(self.save_max_image_action)
+        self.save_std_image_action = QAction('Save Std Image...', self)
+        file_menu.addAction(self.save_std_image_action)
         
         comp_menu = self.menuBar().addMenu('Compute')
         self.detr_action = QAction('Detrend df/f', self)
         comp_menu.addAction(self.detr_action)
-        self.compute_component_evaluation_action = QAction('Compute Component Evaluation', self)
+        self.compute_component_evaluation_action = QAction('Compute Component Metrics', self)
         comp_menu.addAction(self.compute_component_evaluation_action)
         self.compute_projections_action = QAction('Compute Projections (heavy)', self)
         comp_menu.addAction(self.compute_projections_action)
         self.compute_cn_action = QAction('Compute Local Correlation Image (heavy)', self)
         comp_menu.addAction(self.compute_cn_action)
+        self.compute_origtrace_action = QAction('Compute Original Fluorescence Traces', self)
+        comp_menu.addAction(self.compute_origtrace_action)
         
         view_menu = self.menuBar().addMenu('View')
         self.info_action = QAction('Info', self)
@@ -206,8 +223,17 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self.shifts_action)
         
         exp_menu = self.menuBar().addMenu('Export')
-        self.npz_action = QAction('Pynapple NPZ...', self)
-        exp_menu.addAction(self.npz_action)
+        self.save_trace_action_c_g_n = QAction('C to Pynapple NPZ (Good)...', self)
+        exp_menu.addAction(self.save_trace_action_c_g_n)
+        self.save_trace_action_c_a_n = QAction('C to Pynapple NPZ (All)...', self)
+        exp_menu.addAction(self.save_trace_action_c_a_n)
+        self.save_trace_action_f_g_n = QAction('\u0394F/F to Pynapple NPZ (Good)...', self)
+        exp_menu.addAction(self.save_trace_action_f_g_n)
+        self.save_trace_action_f_a_n = QAction('\u0394F/F to Pynapple NPZ (All)...', self)
+        exp_menu.addAction(self.save_trace_action_f_a_n)
+        exp_menu.addSeparator()
+        self.save_mescroi_action = QAction('Contours to MEScROI...', self)
+        exp_menu.addAction(self.save_mescroi_action)
         
         help_menu = self.menuBar().addMenu('Help')
         about_action = QAction('About', self)
@@ -225,7 +251,29 @@ class MainWindow(QMainWindow):
         self.open_mean_image_action.triggered.connect(lambda: self.open_image_file('mean'))
         self.open_max_image_action.triggered.connect(lambda: self.open_image_file('max'))
         self.open_std_image_action.triggered.connect(lambda: self.open_image_file('std'))
-
+        self.save_cn_image_action.triggered.connect(lambda: self.save_image_file('cn'))
+        self.save_mean_image_action.triggered.connect(lambda: self.save_image_file('mean'))
+        self.save_max_image_action.triggered.connect(lambda: self.save_image_file('max'))
+        self.save_std_image_action.triggered.connect(lambda: self.save_image_file('std'))
+        self.save_trace_action_c_g_n.triggered.connect(lambda: self.save_trace('C', 'Good', 'npz'))
+        self.save_trace_action_c_a_n.triggered.connect(lambda: self.save_trace('C', 'All', 'npz'))
+        self.save_trace_action_f_g_n.triggered.connect(lambda: self.save_trace('F_dff', 'Good', 'npz'))
+        self.save_trace_action_f_a_n.triggered.connect(lambda: self.save_trace('F_dff', 'All', 'npz'))
+        self.save_mescroi_action.triggered.connect(self.save_MEScROI)
+        
+        self.detr_action.triggered.connect(self.on_detrend_action)
+        self.compute_component_evaluation_action.triggered.connect(self.on_compute_evaluate_components_action)
+        self.compute_projections_action.triggered.connect(self.on_compute_projections_action)
+        self.compute_cn_action.triggered.connect(self.on_compute_cn_action)
+        self.compute_origtrace_action.triggered.connect(self.on_compute_origtrace_action)
+        self.opts_action.triggered.connect(self.on_opts_action)
+        
+        self.info_action.triggered.connect(self.on_info_action)
+        self.shifts_action.triggered.connect(self.on_shifts_action)
+        self.bg_action.triggered.connect(self.on_bg_action)
+        self.resizeEvent = self.on_resize_figure
+        self.closeEvent = self.on_mainwindow_closing
+        
         # Create central widget and layout       
         main_layout = QSplitter(Qt.Vertical)
         self.setCentralWidget(main_layout)
@@ -249,33 +297,28 @@ class MainWindow(QMainWindow):
         bottom_layout_splitter.setSizes([1, 2])
         
         # Initialize variables
-        self.cnm = None
-        self.hdf5_file = None
-        self.file_changed = False
-        self.online = False
-        self.selected_component = 0
-        self.time = 0
-        self.limit='All'
-        self.manual_acceptance_assigment_has_been_made = False
-        self.data_file = ''
-        self.data_array = None
-        self.mean_projection_array = None
-        self.max_projection_array = None
-        self.std_projection_array = None
+        self.cnm = None #caiman object
+        self.hdf5_file = None # flie name of caiman hdf5 file
+        self.file_changed = False # flag for storing if file has changed
+        self.online = False # flag for OnACID files
+        self.selected_component = 0 # index of selected component
+        self.selected_frame = 0 # index of selected frame
+        self.num_frames = 0  # number of frames in movie
+        self.frame_window = 0 # temporal window of displaying movie frames (half window, in frames)
+        self.limit='All' # restriction on selecting components according to their good/bad assignment
+        self.manual_acceptance_assigment_has_been_made = False # flag for storing if manual component assignment has been made
+        self.data_file = '' # file name of data array file (mmap)
+        self.data_array = None # data array if loaded
+        self.mean_projection_array = None # mean projection array
+        self.max_projection_array = None # max projection array
+        self.std_projection_array = None # std projection array
+        self.orig_trace_array = None # computed original fluorescence traces
+        self.orig_trace_array_neuropil = None # computed original fluorescence traces' neuropil
+        # correlation image is stored in the cnm object
         
-        # Connect events
-        self.detr_action.triggered.connect(self.on_detrend_action)
-        self.compute_component_evaluation_action.triggered.connect(self.on_compute_evaluate_components_action)
-        self.compute_projections_action.triggered.connect(self.on_compute_projections_action)
-        self.compute_cn_action.triggered.connect(self.on_compute_cn_action)
-        self.npz_action.triggered.connect(self.on_npz_action)
 
-        self.opts_action.triggered.connect(self.on_opts_action)
-        self.info_action.triggered.connect(self.on_info_action)
-        self.shifts_action.triggered.connect(self.on_shifts_action)
-        self.bg_action.triggered.connect(self.on_bg_action)
-        self.resizeEvent = self.on_resize_figure
-        self.closeEvent = self.on_mainwindow_closing
+        
+
          
         # Update figure and state
         self.load_state()
@@ -364,7 +407,7 @@ class MainWindow(QMainWindow):
             if self.limit == 'All' or cnme.idx_components is None or cnme.coordinates is None:
                 self.selected_component = value
             else:
-                xyz = np.array([cnme.coordinates[idx]['CoM'] for idx in range(numcomps)]) #is Nx2 shape
+                xyz = self.component_centers #is Nx2 shape
                 current = xyz[value,:]
                 if self.limit == 'Good':
                     idxs = cnme.idx_components
@@ -409,8 +452,24 @@ class MainWindow(QMainWindow):
             self.update_title()
             self.plot_parameters()
             self.set_selected_component(component, 'direct')
+            self.scatter_widget.update_totals()
             self.scatter_widget.update_selected_component_on_scatterplot(self.selected_component)
     
+    def set_selected_frame(self, value, window=None):
+        if self.cnm is None:
+            return
+        if value is not None:
+            value = max(min(self.num_frames-1, value), 0)
+            value=round(value)
+            self.selected_frame=value
+        if window is not None:
+            self.frame_window=int(window)
+            
+        self.spatial_widget.update_spatial_view_image()
+        self.spatial_widget2.update_spatial_view_image()        
+        self.temporal_widget.update_temporal_widget()
+        self.temporal_widget.update_time_selector_line()
+        
     def on_resize_figure(self, event):
         self.update_title() 
         self.save_state()
@@ -467,10 +526,6 @@ class MainWindow(QMainWindow):
         finally:
             waitDlg.close()
             QApplication.restoreOverrideCursor()
-        
-    
-    def on_npz_action(self):
-        pass
 
     def on_opts_action(self):
         if self.cnm is None:
@@ -506,9 +561,7 @@ class MainWindow(QMainWindow):
                 }, 
                 'Paths': {
                 'HDF5 path': self.hdf5_file, 
-                'Data path': self.data_file, 
-                'Mean projection file':  self.mean_projection_file,
-                'Max projection file': self.max_projection_file
+                'Data path': self.data_file
                 }}
             self.info_window = OptsWindow(info, title='Info')
             self.info_window.show()
@@ -585,11 +638,11 @@ class MainWindow(QMainWindow):
         self.file_changed = False
         self.data_file = ''
         self.data_array = None
-        self.mean_projection_file = ''
-        self.max_projection_file = ''
         self.mean_projection_array = None
         self.max_projection_array = None
         self.std_projection_array = None
+        self.orig_trace_array = None
+        self.orig_trace_array_neuropil = None
         # cn, std_projection?
         progress_dialog.setValue(25)
         progress_dialog.setLabelText('Processing data...')
@@ -605,17 +658,23 @@ class MainWindow(QMainWindow):
         print(f'Data frame dimensions: {self.dims} x {self.num_frames} frames')
         self.framerate=self.cnm.params.data['fr'] #Hz
         self.decay_time=self.cnm.params.data['decay_time'] #sec
+        self.frame_window=int(round(self.decay_time*self.framerate))
         self.neuron_diam=np.mean(self.cnm.params.init['gSiz'])*2 #pixels
         self.pixel_size=self.cnm.params.data['dxy'] #um
         print(f'Frame rate: {self.framerate} Hz, decay time: {self.decay_time} sec, neuron diameter: {self.neuron_diam} pixels, pixel size: {self.pixel_size} um')
         
+        #ensuring A is dense
+        self.cnm.estimates.A = self.cnm.estimates.A.toarray()
+        #ensuring contours are calculated
         if self.cnm.estimates.coordinates is None:
             thr=0.9
-            print(f'Calculating commponent contours with threshold {thr}...')
+            print(f'Calculating component contours with threshold {thr}...')
             progress_dialog.setValue(30)
-            progress_dialog.setLabelText('Calculating commponent contours...')
+            progress_dialog.setLabelText('Calculating component contours...')
             QApplication.processEvents()
             self.cnm.estimates.coordinates=caiman_get_contours(self.cnm.estimates.A, self.dims, swap_dim=True, thr=thr)     
+        self.component_contour_coords = [self.cnm.estimates.coordinates[idx]['coordinates'] for idx in range(self.numcomps)]
+        self.component_centers = np.array([self.cnm.estimates.coordinates[idx]['CoM'] for idx in range(self.numcomps)])
         
         progress_dialog.setValue(50)
         progress_dialog.setLabelText(f'Rendering {self.numcomps} components...')
@@ -649,13 +708,29 @@ class MainWindow(QMainWindow):
         self.open_mean_image_action.setEnabled(self.cnm is not None)
         self.open_max_image_action.setEnabled(self.cnm is not None)
         self.open_std_image_action.setEnabled(self.cnm is not None)
+        self.save_cn_image_action.setEnabled(self.cnm is not None and hasattr(self.cnm.estimates, 'Cn') and self.cnm.estimates.Cn is not None)
+        self.save_mean_image_action.setEnabled(self.mean_projection_array is not None)
+        self.save_max_image_action.setEnabled(self.max_projection_array is not None)
+        self.save_std_image_action.setEnabled(self.std_projection_array is not None)       
+        
         self.detr_action.setEnabled(self.cnm is not None and self.cnm.estimates.F_dff is None)
         self.compute_component_evaluation_action.setEnabled(self.data_array is not None)
         self.compute_projections_action.setEnabled(self.data_array is not None)
         self.compute_cn_action.setEnabled(self.data_array is not None)
-        self.npz_action.setEnabled(self.cnm is not None)
+        self.compute_origtrace_action.setEnabled(self.data_array is not None)
+        self.save_trace_action_c_a_n.setEnabled(self.cnm is not None)
+        self.save_trace_action_c_g_n.setEnabled(self.cnm is not None and self.cnm.estimates.idx_components is not None)
+        self.save_trace_action_f_a_n.setEnabled(self.cnm is not None and self.cnm.estimates.F_dff is not None)
+        self.save_trace_action_f_g_n.setEnabled(self.cnm is not None and self.cnm.estimates.idx_components is not None and self.cnm.estimates.F_dff is not None)
+        self.save_mescroi_action.setEnabled(self.cnm is not None and self.cnm.estimates.idx_components is not None)
         self.bg_action.setEnabled(self.cnm is not None)
         self.shifts_action.setEnabled(self.cnm is not None and self.cnm.estimates.shifts is not None and len(self.cnm.estimates.shifts) > 0)
+        self.temporal_widget.time_slider.setEnabled(self.cnm is not None)
+        self.temporal_widget.time_spinbox.setEnabled(self.cnm is not None)
+        self.temporal_widget.time_window_spinbox.setEnabled(self.cnm is not None)
+        self.temporal_widget.rlavr_spinbox.setEnabled(self.cnm is not None)
+        self.temporal_widget.time_slider.setRange(0, self.num_frames-1)
+        self.temporal_widget.time_spinbox.setRange(0, self.num_frames-1)        
         
         if  self.cnm is None:
             self.temporal_widget.component_spinbox.setEnabled(False)
@@ -663,16 +738,17 @@ class MainWindow(QMainWindow):
             self.update_title()
             self.temporal_widget.recreate_temporal_view()
             self.plot_parameters()
+            self.scatter_widget.update_totals()
             self.update_title()
             return
          
         self.temporal_widget.update_component_spinbox(self.selected_component)
-        self.scatter_widget.total_label.setText(f'    Total: {self.numcomps}')
+        self.scatter_widget.update_totals()
                 
-        self.set_selected_component(self.selected_component, 'direct')           
         self.update_title()
         self.temporal_widget.recreate_temporal_view()
         self.plot_parameters()
+        self.set_selected_component(self.selected_component, 'direct')           
 
     def save_file(self):
         print('Save file')
@@ -696,55 +772,65 @@ class MainWindow(QMainWindow):
                 break
         if suggested_file is None:
             suggested_file = os.path.dirname(self.hdf5_file)
-        data_file = QFileDialog.getOpenFileName(self, 'Open Movement Corrected Data Array File (.mmap, .h5)', suggested_file, 'Memory mapped files (*.mmap);;Movie file (*.h5);;All Files (*)')
+        data_file, _  = QFileDialog.getOpenFileName(self, 'Open Movement Corrected Data Array File (.mmap, .h5)', suggested_file, 'Memory mapped files (*.mmap);;Movie file (*.h5);;All Files (*)')
         
-        if data_file:
-            data_file=data_file[0]
-            progress_dialog = QProgressDialog('Opening data file...', None, 0, 100, self)
-            progress_dialog.setWindowTitle('Loading Data Array File')
-            progress_dialog.setModal(True)
-            progress_dialog.setValue(0)
-            progress_dialog.setFixedWidth(300)
-            progress_dialog.show()
-            QApplication.processEvents()
-            
-            print(f'Loading mmap ({os.path.basename(data_file)})')
-            Yr, dims, T = cm.load_memmap(data_file)
-            if T != self.num_frames or dims[0] != self.dims[1] or dims[1] != self.dims[0]:
-                progress_dialog.close()
-                QMessageBox.critical(self, 'Error loading data', f'Incompatible data dimensions: expected {self.num_frames} frames x {self.dims[0]} x {self.dims[1]} pixels, but got {T} frames x {dims[0]} x {dims[1]} pixels.')
-                print(f'Incompatible data dimensions: expected {self.num_frames} frames x {self.dims[0]} x {self.dims[1]} pixels, but got {T} frames x {dims[1]} x {dims[0]} pixels.')
-                return
-            self.data_array = Yr
-            self.data_file = data_file
-            
-            progress_dialog.setValue(50)
-            progress_dialog.setLabelText(f'Rendering windows...')
-            self.update_all()
-            progress_dialog.setValue(100)
-            progress_dialog.setLabelText('Done.')
-            progress_dialog.close()
-    
-    def open_image_file(self, type):
-        if self.cnm is None:
+        if not data_file:
             return
-        suggested_file = None
-
+        
+        progress_dialog = QProgressDialog('Opening data file...', None, 0, 100, self)
+        progress_dialog.setWindowTitle('Loading Data Array File')
+        progress_dialog.setModal(True)
+        progress_dialog.setValue(0)
+        progress_dialog.setFixedWidth(300)
+        progress_dialog.show()
+        QApplication.processEvents()
+        
+        print(f'Loading mmap ({os.path.basename(data_file)})')
+        Yr, dims, T = cm.load_memmap(data_file)
+        if T != self.num_frames or dims[0] != self.dims[1] or dims[1] != self.dims[0]:
+            progress_dialog.close()
+            QMessageBox.critical(self, 'Error loading data', f'Incompatible data dimensions: expected {self.num_frames} frames x {self.dims[0]} x {self.dims[1]} pixels, but got {T} frames x {dims[0]} x {dims[1]} pixels.')
+            print(f'Incompatible data dimensions: expected {self.num_frames} frames x {self.dims[0]} x {self.dims[1]} pixels, but got {T} frames x {dims[1]} x {dims[0]} pixels.')
+            return
+        self.data_array = Yr
+        self.data_file = data_file
+        
+        progress_dialog.setValue(50)
+        progress_dialog.setLabelText(f'Rendering windows...')
+        self.spatial_widget.update_spatial_view(array_text='Data')
+        self.update_all()
+        progress_dialog.setValue(100)
+        progress_dialog.setLabelText('Done.')
+        progress_dialog.close()
+    
+    def look_for_image_file(self, type, save=False):
         if type == 'cn':
-            file_signature = 'Cn.npy'
+            file_signature = 'Cn.'
         else:
-            file_signature = type+'_projection.npy'
+            file_signature = type+'_projection.'
 
         previ=os.path.dirname(self.hdf5_file)
-        suggested_file = next((f for f in glob.glob(os.path.join(previ, '*'+file_signature)) if os.path.isfile(f)), None)
+        suggested_file = None
+        for ext in ('npy', 'npz'):
+            suggested_file = next((f for f in glob.glob(os.path.join(previ, '*'+file_signature+ext)) if os.path.isfile(f)), None)
+            if suggested_file:
+                break
 
         if suggested_file is None:
             suggested_file = os.path.dirname(self.hdf5_file)
-        image_filep = QFileDialog.getOpenFileName(self, 'Open NPY file containing ' + type + ' image', suggested_file, 'NPY files (*.npy);;All Files (*)')
+            if save:
+                suggested_file = os.path.join(os.path.dirname(self.hdf5_file), file_signature+'npy')
+        return suggested_file
+            
+    def open_image_file(self, type):
+        if self.cnm is None:
+            return
+        suggested_file=self.look_for_image_file(type)
+        print(suggested_file)
+        image_filep, _ = QFileDialog.getOpenFileName(self, 'Open file containing ' + type + ' image', suggested_file, 'NPY/NPZ files (*.npy *.npz);;All Files (*)')
         
         if not image_filep:
             return 
-        image_filep=image_filep[0]
         image=np.load(image_filep)
         image=image.T
         if image.shape[0] != self.dims[0] or image.shape[1] != self.dims[1]:
@@ -758,8 +844,102 @@ class MainWindow(QMainWindow):
         else:
             setattr(self, type + '_projection_array', image)
         
+        self.spatial_widget.update_spatial_view(array_text=type.capitalize())
         self.update_all()
 
+    def save_image_file(self, ptype):
+        if self.cnm is None:
+            return
+        
+        if ptype == 'cn':
+            image=self.cnm.estimates.Cn 
+        else:
+            image=getattr(self, ptype + '_projection_array')
+        
+        suggested_file=self.look_for_image_file(ptype, save=True)
+        print(suggested_file)
+        image_filep, _ = QFileDialog.getSaveFileName(self, 'Save ' + ptype + ' image', suggested_file, 'NPY files (*.npy);;')
+        if not image_filep: #overwrite confirmation has been madde
+            return
+        np.save(str(image_filep), image.T)
+        print( ptype.capitalize() + ' image saved to: ' + image_filep )
+        
+    def save_trace(self, trace, filtering, filetype):
+        if self.cnm is None:
+            return
+        cnme=self.cnm.estimates
+        data=getattr(cnme, trace)
+        if data is None:
+            raise Exception('No ' + trace + ' data available')
+        if filtering == 'All':
+            idx=range(self.numcomps)
+        elif filtering == 'Good':
+            idx=cnme.idx_components
+            if idx is None:
+                raise Exception('No component metrics available')
+        else:
+            raise Exception('Unknown filtering: ' + filtering)
+        if len(idx) == 0:
+            QMessageBox.critical(self, 'Error', 'No selected components available')
+            return
+        
+        if filetype=='npz':
+            suggestion=os.path.join(os.path.dirname(self.hdf5_file), trace+'_traces_'+filtering+ '.npz')
+            data_filep, _ = QFileDialog.getSaveFileName(self, 'Save ' + filtering.lower() + ' ' + trace + ' traces', suggestion, 'NPZ files (*.npz);;')
+            if not data_filep: #overwrite confirmation has been madde
+                return
+            data=data[idx, :]
+            time=np.arange(data.shape[1])/self.framerate #sec
+            component_centers = np.array([cnme.coordinates[idxe]['CoM'] for idxe in idx])
+            metadict={
+                'original_index': list(idx), 
+                'X_pix': list(component_centers[:,0]),
+                'Y_pix': list(component_centers[:,1])
+                } 
+            if cnme.idx_components is not None:
+                metadict={
+                    'original_index': list(idx), 
+                    'X_pix': list(component_centers[:,0]),
+                    'Y_pix': list(component_centers[:,1]),
+                    'r_value': list(cnme.r_values[idx]),
+                    'cnn_preds': list(cnme.cnn_preds[idx]), 
+                    'SNR_comp': list(cnme.SNR_comp[idx]), 
+                    'assignment': ['Good' if idx[i] in cnme.idx_components else 'Bad' for i in range(len(idx))]
+                    } 
+            output_data=nap.TsdFrame(t=time, d=data.T, metadata=metadict)
+            output_data.save(str(data_filep))
+            print(data_filep + ' saved.')
+        else:
+            raise Exception('Unknown filetype: ' + filetype)
+         
+    def save_MEScROI(self, filtering='Good'):
+        cnme=self.cnm.estimates
+        if filtering == 'All':
+            idx=range(self.numcomps)
+        elif filtering == 'Good':
+            idx=cnme.idx_components
+            if idx is None:
+                raise Exception('No component metrics available')
+        else:
+            raise Exception('Unknown filtering: ' + filtering)
+        if len(idx) == 0:
+            QMessageBox.critical(self, 'Error', 'No selected components available')
+            return
+        
+        suggestion=os.path.join(os.path.dirname(self.hdf5_file), 'selection_' + filtering + '.MEScROI')
+        data_filep, _ = QFileDialog.getSaveFileName(self, 'Save ' + filtering.lower() + ' component contours', suggestion, 'MEScROI files (*.mescroi);;')
+        if not data_filep: #overwrite confirmation has been made
+            return
+        data=data[idx, :]
+        time=np.arange(data.shape[1])/self.framerate #sec
+        self.component_contour_coords 
+        
+        #todo
+        print('todo')
+        #output_data.save(str(data_filep))
+        #print(data_filep + ' saved.')
+   
+        
     def on_compute_evaluate_components_action(self):
         if self.data_array is None:
             return
@@ -775,12 +955,12 @@ class MainWindow(QMainWindow):
         Yr=self.data_array 
         print('Evaluating components... Transposing data...')
         images = np.reshape(Yr.T, [self.num_frames] + [self.dims[1]] + [self.dims[0]], order='F')
-        c, dview, n_processes = cm.cluster.setup_cluster(backend='local', n_processes=None, single_thread=False)
         
         progress_dialog.setValue(10)
         progress_dialog.setLabelText(f'Evaluating components (may take a while)...')
         QApplication.processEvents()
         print('Evaluating components (estimates.evaluate_components)...')
+        c, dview, n_processes = cm.cluster.setup_cluster(backend='local', n_processes=None, single_thread=False)
         self.cnm.estimates.evaluate_components(images, self.cnm.params, dview=dview)
         self.file_changed = True
         dview.terminate()
@@ -794,6 +974,23 @@ class MainWindow(QMainWindow):
         progress_dialog.setLabelText('Done.')
         progress_dialog.close()
     
+    def on_evaluate_button_clicked(self):
+        if self.data_array is None:
+            QMessageBox.information(self, 'Information', 'Open data array first to evaluate components')
+            return
+        if self.cnm.estimates.r_values is None or self.cnm.estimates.SNR_comp is None or self.cnm.estimates.cnn_preds is None:
+            QMessageBox.information(self, 'Information', 'Component metrics are missing. Use Compute Component Metrics from the file menu.')
+            return
+        if self.manual_acceptance_assigment_has_been_made:
+            reply = QMessageBox.question(self, 'Confirm', 'This operation will overwrite manual component assignment made. Do you want to continue?', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.No:
+                return
+        #CaImAn do the job:
+        self.cnm.estimates.filter_components(imgs=self.data_array, params=self.cnm.params)
+        self.manual_acceptance_assigment_has_been_made=False
+        
+        self.update_all()
+        
     def on_compute_projections_action(self):
         if self.data_array is None:
             return
@@ -873,11 +1070,94 @@ class MainWindow(QMainWindow):
         progress_dialog.setLabelText('Done.')
         progress_dialog.close()
             
+    def on_compute_origtrace_action(self):
+        if self.data_array is None:
+            return
+        
+        progress_dialog = QProgressDialog('Processing data', None, 0, 100, self)
+        progress_dialog.setWindowTitle('Calculating fluorescence traces from data file...')
+        progress_dialog.setModal(True)
+        progress_dialog.setValue(0)
+        progress_dialog.setFixedWidth(400)
+        progress_dialog.show()
+        QApplication.processEvents()
+        
+        #masks for polygons (enery threshold)
+        threshold=0.9
+        print(f'Calculating fluorescence traces from data file, using component masks at threshold {threshold}...')
+        A_masked = self.cnm.estimates.A >= 1
+        for i in range(self.numcomps):
+            vec=self.cnm.estimates.A[:,i]
+            vec[np.isnan(vec)]=0
+            vec_sorted = np.sort(vec)[::-1]
+            cum_sum = np.cumsum(vec_sorted)
+            weight=cum_sum[-1]  # equivalent to sum(vec)
+            
+            idx = np.searchsorted(cum_sum, threshold * weight)
+            pixthresh=vec_sorted[min(idx, len(vec_sorted)-1)]
+            A_masked[:,i]=vec>pixthresh
+            if not i%100:
+                #print(f'mask calculated. comp {i}, enery {pixthresh}, idx {idx}, {vec.shape}, {cum_sum.shape} ')
+                progress_dialog.setValue(i/self.numcomps*20)
+                progress_dialog.setLabelText(f'Calculating masks ({i}/{self.numcomps})...')
+                QApplication.processEvents()
+        
+        # Prepare output
+        output = np.zeros((self.numcomps, self.num_frames))
+
+        # For each component, compute mean of pixels within mask over time
+        for i in range(self.numcomps):
+            masked_values = self.data_array[A_masked[:, i], :]         # shape: [masked_pixels, num_frames]
+            vec = np.nanmean(masked_values, axis=0)  
+            output[i, :]=vec
+            if not i%100:
+                #print(f'Number of nan elements in vec: {np.isnan(vec).sum()}  i: {i}')
+                progress_dialog.setValue(i/self.numcomps*60+20)
+                progress_dialog.setLabelText(f'Calculating traces ({i}/{self.numcomps})...')
+                QApplication.processEvents()
+        self.orig_trace_array=output
+        print(f'Processed {self.numcomps} components.')
+
+        progress_dialog.setValue(80)
+        progress_dialog.setLabelText(f'Calculating neuropil fluorescence...')
+        QApplication.processEvents()
+                
+        #neuropil
+        print('Calculating neuropil trace: ', end='')
+        neuropi_mask=A_masked[:,0]
+        for i in range(1,self.numcomps):
+            neuropi_mask=np.logical_or(neuropi_mask, A_masked[:,1])
+        neuropi_mask = ~neuropi_mask
+        
+        mask_cout=np.count_nonzero(neuropi_mask)
+        print('mask size: ', mask_cout, end='')
+        if mask_cout>5200:
+            true_idxs = np.flatnonzero(neuropi_mask)
+            num_to_clear = mask_cout-5000
+            to_clear = np.random.choice(true_idxs, size=num_to_clear, replace=False)
+            neuropi_mask[to_clear] = False
+            print(', downsampled mask size: ', np.count_nonzero(neuropi_mask))
+
+        masked_values = self.data_array[neuropi_mask, :]
+        vec = np.nanmean(masked_values, axis=0)
+        self.orig_trace_array_neuropil=vec
+        
+        print(f'Neuropil trace calculated.')
+        progress_dialog.setValue(90)
+        progress_dialog.setLabelText(f'Rendering windows...')
+        QApplication.processEvents()
+        
+        self.temporal_widget.update_array_selector('Data')
+        self.update_all()
+        progress_dialog.setValue(100)
+        progress_dialog.setLabelText('Done.')
+        progress_dialog.close()
+        
     def plot_parameters(self):
         if self.cnm is None or self.cnm.estimates.r_values is None:
             fig = go.Figure()
             fig.update_layout(annotations=[dict(
-                text='No evaluated components.\n Open data array for evaluation.',
+                text='No evaluated components.\n Open data array to compute component metrics.',
                 xref='paper', yref='paper', x=0.5, y=0.5, showarrow=False
             )])
             html = fig.to_html(include_plotlyjs='cdn')
@@ -1012,7 +1292,8 @@ class MainWindow(QMainWindow):
         zoomwindow=self.decay_time*self.framerate*10
         xrange=max_index-zoomwindow,max_index+zoomwindow
         self.temporal_widget.temporal_view.setRange(xRange=xrange, padding=0.0)    
-        
+        self.set_selected_frame(max_index)
+     
     def update_title(self):
         if self.cnm is None:
             self.setWindowTitle('Pluvianus: CaImAn result browser')
@@ -1059,7 +1340,11 @@ class TopWidget(QWidget):
                 # Top plot: Temporal (full width)
         self.temporal_view = pg.PlotWidget()
           
-        left_layout = QVBoxLayout()
+        # Create a container widget inside scroll area
+        scroll_content = QWidget()
+        left_layout = QVBoxLayout(scroll_content)
+
+        #left_layout = QVBoxLayout()
         left_layout.setAlignment(Qt.AlignTop)
         left_layout.setSpacing(0)
         
@@ -1071,10 +1356,12 @@ class TopWidget(QWidget):
         self.component_spinbox.setMinimum(0)
         self.component_spinbox.setValue(0)
         self.component_spinbox.setToolTip('Select component')
+        self.component_spinbox.setFixedWidth(90)
         left_layout.addWidget(self.component_spinbox)
         
         left_layout.addWidget(QLabel('Limit to:'))
         self.limit_component_type_combo = QComboBox()
+        self.limit_component_type_combo.setFixedWidth(90)
         self.limit_component_type_combo.addItem('All')
         self.limit_component_type_combo.addItem('Good')
         self.limit_component_type_combo.addItem('Bad')
@@ -1085,9 +1372,19 @@ class TopWidget(QWidget):
         head_label.setStyleSheet('font-weight: bold; margin-top: 10px;')
         left_layout.addWidget(head_label)
         self.array_selector = QComboBox()
+        self.array_selector.setFixedWidth(90)
         self.array_selector.setToolTip('Select temporal array to plot')
         left_layout.addWidget(self.array_selector)
-                
+        
+        self.rlavr_spinbox = QSpinBox()
+        self.rlavr_spinbox.setMinimum(0)
+        self.rlavr_spinbox.setMaximum(100)
+        self.rlavr_spinbox.setValue(0)
+        self.rlavr_spinbox.setToolTip('Sets running average Gauss kernel on the displayed data')
+        self.rlavr_spinbox.setFixedWidth(90)
+        self.rlavr_spinbox.setPrefix('Avr: ')
+        left_layout.addWidget(self.rlavr_spinbox)
+        
         self.temporal_zoom_button = QPushButton('Zoom')
         self.temporal_zoom_button.setToolTip('Centers view on largest peak on C, with zoom corresponding to decay time')
         left_layout.addWidget(self.temporal_zoom_button)
@@ -1113,7 +1410,7 @@ class TopWidget(QWidget):
         toggle_button_layout = QHBoxLayout()
         toggle_button_layout.setSpacing(0)
         good_toggle_button = QPushButton('Good')
-        good_toggle_button.setFixedWidth(50)
+        good_toggle_button.setFixedWidth(45)
         good_toggle_button.setCheckable(True)
         good_toggle_button.setContentsMargins(0, 0, 0, 0)
         good_toggle_button.setToolTip('Accept component manually as good')
@@ -1121,7 +1418,7 @@ class TopWidget(QWidget):
         toggle_button_layout.addWidget(good_toggle_button)
         self.good_toggle_button = good_toggle_button
         bad_toggle_button = QPushButton('Bad')
-        bad_toggle_button.setFixedWidth(50)
+        bad_toggle_button.setFixedWidth(45)
         bad_toggle_button.setContentsMargins(0, 0, 0, 0)
         bad_toggle_button.setCheckable(True)
         bad_toggle_button.setStyleSheet('background-color: white; color: red;')
@@ -1129,15 +1426,58 @@ class TopWidget(QWidget):
         toggle_button_layout.addWidget(bad_toggle_button)
         self.bad_toggle_button = bad_toggle_button
         # Add the toggle button layout to the left layout
-        left_layout.addLayout(toggle_button_layout)
+        left_layout.addLayout(toggle_button_layout)        
         
-        my_layot.addLayout(left_layout)
-        my_layot.addWidget(self.temporal_view, stretch=1)        
+        # Create scroll area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)  # Makes the scroll area resize with the window
+        #scroll_area.setStyleSheet('background-color: red;')
+        #scroll_content.setStyleSheet('background-color: yellow;')
+        #head_label.setStyleSheet('background-color: green;')
+        #self.temporal_zoom_auto_checkbox.setStyleSheet('background-color: green;')
+        #head_label.setStyleSheet('background-color: blue;')
+        left_layout.setContentsMargins(6, 1, 10, 1)
+        my_layot.setContentsMargins(1 , 1, 6, 1)
+    
+        # Set scroll content as scroll area widget
+        scroll_area.setWidget(scroll_content)
+        my_layot.addWidget(scroll_area)
+        
+        right_layout=QVBoxLayout()
+        left_layout.setContentsMargins(0, 1, 9, 9)
+       
+        right_layout.addWidget(self.temporal_view, stretch=1) 
+        time_layout=QHBoxLayout()
+        left_layout.setContentsMargins(0, 0,5,5)
+       
+        time_label=QLabel('Time:')
+        time_layout.addWidget(time_label)
+        self.time_spinbox = QSpinBox()
+        self.time_spinbox.setPrefix('frame ')
+        time_layout.addWidget(self.time_spinbox)
+        self.time_slider = QSlider(Qt.Horizontal)
+        time_layout.addWidget(self.time_slider)
+        self.time_label=QLabel('--')
+        time_layout.addWidget(self.time_label)
+        self.time_window_spinbox = QSpinBox()
+        self.time_window_spinbox.setMaximum(300)
+        self.time_window_spinbox.setPrefix('±')
+        self.time_window_spinbox.setFixedWidth(100)
+        time_layout.addWidget(self.time_window_spinbox)
+        
+        # Set the initial value
+        self.time_slider.valueChanged.connect(lambda value: self.on_time_widget_changed(value, 'slider'))
+        self.time_spinbox.valueChanged.connect(lambda value: self.on_time_widget_changed(value, 'spinbox'))
+        self.time_window_spinbox.valueChanged.connect(self.on_time_window_changed)
+        
+        right_layout.addLayout(time_layout)        
+        my_layot.addLayout(right_layout, stretch=10)        
         
         self.setLayout(my_layot)
         
         #event hadlers
         self.component_spinbox.valueChanged.connect(self.on_component_spinbox_changed)
+        self.rlavr_spinbox.valueChanged.connect(self.on_rlavr_spinbox_changed)
         self.limit_component_type_combo.currentTextChanged.connect(self.on_limit_component_type_changed)
         self.array_selector.currentTextChanged.connect(self.on_array_selector_changed)  
         self.temporal_zoom_button.clicked.connect(self.on_temporal_zoom)
@@ -1145,6 +1485,15 @@ class TopWidget(QWidget):
         self.good_toggle_button.clicked.connect(lambda: self.mainwindow.set_component_assignment_manually('Good'))
         self.bad_toggle_button.clicked.connect(lambda: self.mainwindow.set_component_assignment_manually('Bad'))
     
+    def on_time_widget_changed(self, value, source):
+        #print(f'{inspect.stack()[1][3]} called with value {value}{source}')
+        self.mainwindow.set_selected_frame(value)
+ 
+    def on_time_window_changed(self, value):
+        self.mainwindow.set_selected_frame(None, window=value)
+        
+    def on_rlavr_spinbox_changed(self):
+        self.update_temporal_view()
         
     def update_component_spinbox(self, value):
         self.component_spinbox.blockSignals(True)
@@ -1186,7 +1535,9 @@ class TopWidget(QWidget):
                   'YrA': 'Trace residuals', 
                   'R': 'Trace residuals', 
                   'noisyC': 'Temporal traces (including residuals plus background)', 
-                  'C_on': '?'}
+                  'C_on': '?', 
+                  'Data': 'Original fluorescence trace calculated from contour polygons', 
+                  'Data neuropil': 'Original fluorescence trace neuropil mean'}
         self.update_temporal_view()
         self.array_selector.setToolTip(tooltips[text])
 
@@ -1210,6 +1561,10 @@ class TopWidget(QWidget):
             temparr = getattr(cnm.estimates, array_name)
             if (temparr is not None) :
                 selectable_array_names.append(array_name)
+        if self.mainwindow.orig_trace_array is not None:
+            selectable_array_names.append('Data')
+        if self.mainwindow.orig_trace_array_neuropil is not None:
+            selectable_array_names.append('Data neuropil')
         print('Selectable array names:', selectable_array_names)
         if value is None:
             previous_selected_array = self.array_selector.currentText()
@@ -1226,16 +1581,18 @@ class TopWidget(QWidget):
         self.array_selector.blockSignals(False)
     
     def recreate_temporal_view(self):
+        #.update_all esetén
         self.temporal_zoom_auto_checkbox.setEnabled(self.mainwindow.cnm is not None)
         self.temporal_zoom_button.setEnabled(self.mainwindow.cnm is not None)
         self.good_toggle_button.setEnabled(self.mainwindow.cnm is not None)
         self.bad_toggle_button.setEnabled(self.mainwindow.cnm is not None)
-        self.temporal_zoom_auto_checkbox.setChecked(False)
+        #self.temporal_zoom_auto_checkbox.setChecked(False)
+        
+        self.temporal_view.clear()
         
         if self.mainwindow.cnm is None:
             text='No data loaded yet.\nOpen CaImAn HDF5 file using the file menu.'
             text = pg.TextItem(text=text, anchor=(0.5, 0.5), color='k')
-            self.temporal_view.clear()
             self.temporal_view.addItem(text)
             self.temporal_view.getPlotItem().getViewBox().setMouseEnabled(x=False, y=False)
             self.temporal_view.getPlotItem().showGrid(False)
@@ -1245,28 +1602,29 @@ class TopWidget(QWidget):
         
         cnme=self.mainwindow.cnm.estimates
         
-        self.temporal_view.clear()
         self.temporal_view.getPlotItem().getViewBox().setMouseEnabled(x=True, y=True)
         self.temporal_view.setBackground(None)
         self.temporal_view.setDefaultPadding( 0.0 )
         self.temporal_view.getPlotItem().showGrid(x=True, y=True, alpha=0.3)
         self.temporal_view.getPlotItem().showAxes(True, showValues=(True, False, False, True))
         self.temporal_view.getPlotItem().setContentsMargins(0, 0, 10, 0)  # add margin to the right
-
-            
+  
         if not cnme.idx_components is None:
-            self.mainwindow.scatter_widget.good_label.setText(f'    Good: {len(cnme.idx_components)}')
-            self.mainwindow.scatter_widget.good_label.setEnabled(True)
-            self.mainwindow.scatter_widget.bad_label.setText(f'    Bad: {len(cnme.idx_components_bad)}')
-            self.mainwindow.scatter_widget.bad_label.setEnabled(True)  
             self.good_toggle_button.setEnabled(False)
             self.bad_toggle_button.setEnabled(False)
-        else:
-            self.mainwindow.scatter_widget.good_label.setText('    Good: --')
-            self.mainwindow.scatter_widget.good_label.setEnabled(False)
-            self.mainwindow.scatter_widget.bad_label.setText('    Bad: --')
-            self.mainwindow.scatter_widget.bad_label.setEnabled(False)   
-            
+
+        self.mainwindow.scatter_widget.update_totals()
+        
+        self.temporal_line1=self.temporal_view.plot(x=[0,1 ], y=[0,3], pen=pg.mkPen('r', width=1), name='component')
+        
+        self.temporal_marker_P = pg.InfiniteLine(pos=2, angle=90, movable=False, pen=pg.mkPen('darkgrey', width=2))
+        self.temporal_view.addItem(self.temporal_marker_P)
+        self.temporal_marker_N = pg.InfiniteLine(pos=2, angle=90, movable=False, pen=pg.mkPen('darkgrey', width=2))
+        self.temporal_view.addItem(self.temporal_marker_N)
+        self.temporal_marker = pg.InfiniteLine(pos=2, angle=90, movable=True, pen=pg.mkPen('r', width=2), hoverPen=pg.mkPen('m', width=4))
+        self.temporal_view.addItem(self.temporal_marker)
+        self.temporal_marker.sigPositionChangeFinished.connect(lambda line=self.temporal_marker: line.setPen(pg.mkPen('r', width=2)))
+        self.temporal_marker.sigDragged.connect(self.on_temporal_marker_dragged)
         self.update_temporal_view()
 
     def update_temporal_view(self):
@@ -1283,6 +1641,10 @@ class TopWidget(QWidget):
             ctitle=f'Residual ({index})'
         elif array_text == 'S':
             ctitle=f'Spike count estimate ({index})'
+        elif array_text== 'Data':
+            ctitle=f'Original fluorescence trace ({index})'
+        elif array_text== 'Data neuropil':
+            ctitle=f'Original fluorescence trace neuropil mean'
         else:
             ctitle=f'Temporal Component ({array_text}, {index})'
         
@@ -1291,12 +1653,22 @@ class TopWidget(QWidget):
         self.temporal_view.setLabel('left', f'{array_text} value')
         
         #array_names = ['C', 'f', 'YrA', 'F_dff', 'R', 'S', 'noisyC', 'C_on']
-        y=getattr(cnme, array_text)[index, :]
-        if len(y) > self.mainwindow.num_frames:
-            y = y[-self.mainwindow.num_frames:] # in case of noisyC or C_on   
-        self.temporal_view.clear()
-        self.temporal_view.plot(x=np.arange(len(y)), y=y, pen=pg.mkPen(color='b', width=2), name=f'Temporal component {array_text} {index}')   
-
+        if array_text == 'Data':
+            y=self.mainwindow.orig_trace_array[index, :]
+        elif array_text== 'Data neuropil':
+            y=self.mainwindow.orig_trace_array_neuropil
+        else:
+            y=getattr(cnme, array_text)[index, :]
+            if len(y) > self.mainwindow.num_frames:
+                y = y[-self.mainwindow.num_frames:] # in case of noisyC or C_on   
+        
+        w=self.rlavr_spinbox.value()
+        if w>0:
+            kernel = gaussian(2*w+1, w)
+            kernel = kernel / np.sum(kernel)
+            y = np.convolve(y, kernel, mode='same')
+        self.temporal_line1.setData(x=np.arange(len(y)), y=y, pen=pg.mkPen(color='b', width=2), name=f'data {array_text} {index}')
+        
         if not cnme.r_values is None:
             r = cnme.r_values[index]
             max_r = np.max(cnme.r_values)
@@ -1344,10 +1716,45 @@ class TopWidget(QWidget):
             self.good_toggle_button.setEnabled(False)
             self.bad_toggle_button.setChecked(False)
             self.bad_toggle_button.setEnabled(False)  
-            
+        
         if self.temporal_zoom_auto_checkbox.isChecked():
             self.mainwindow.perform_temporal_zoom()
-
+        else:
+            self.update_time_selector_line()
+            self.update_temporal_widget()
+        
+    def on_temporal_marker_dragged(self, line):
+        line.setPen(pg.mkPen('m', width=4))
+        self.mainwindow.set_selected_frame(int(line.value()))
+     
+    def update_temporal_widget(self):
+        value=self.mainwindow.selected_frame
+        w=self.mainwindow.frame_window
+        self.time_slider.blockSignals(True)
+        self.time_slider.setValue(value)
+        self.time_slider.blockSignals(False)
+        self.time_spinbox.blockSignals(True)
+        self.time_spinbox.setValue(value)
+        self.time_spinbox.blockSignals(False)
+        self.time_window_spinbox.blockSignals(True)
+        self.time_window_spinbox.setValue(self.mainwindow.frame_window)
+        self.time_window_spinbox.setSuffix(' frames' if self.mainwindow.frame_window > 1 else ' frame')
+        self.time_window_spinbox.blockSignals(False)
+        
+        strin=f'{value/self.mainwindow.framerate:.3f} s'
+        if w>0:
+            strin=strin+f' ±{w/self.mainwindow.framerate:.3f} s'
+        self.time_label.setText(strin)
+        
+    def update_time_selector_line(self):
+        value=self.mainwindow.selected_frame
+        w=self.mainwindow.frame_window
+        tmin=value-w if value-w>0 else 0
+        tmax=value+w if value+w<self.mainwindow.num_frames-1 else self.mainwindow.num_frames-1
+        self.temporal_marker.setValue(value)
+        self.temporal_marker_N.setValue(tmin)
+        self.temporal_marker_P.setValue(tmax)
+        
 
 class ScatterWidget(QWidget):
     def __init__(self, main_window: MainWindow, parent=None):
@@ -1398,7 +1805,10 @@ class ScatterWidget(QWidget):
         self.rval_thr_spinbox = QDoubleSpinBox()
         self.rval_thr_spinbox.setToolTip('Space correlation threshold. Components with correlation higher than this will get accepted')
         threshold_layout.addWidget(self.rval_thr_spinbox)
-        
+        self.evaluate_button = QPushButton('Evaluate')
+        self.evaluate_button.setToolTip('Accept or reject components based on these threshold values (filter_components())')
+        threshold_layout.addWidget(self.evaluate_button)
+                
         my_layout.addLayout(threshold_layout)
         
         self.parameters_view = QWebEngineView()
@@ -1422,10 +1832,12 @@ class ScatterWidget(QWidget):
                 self.rval_lowest_spinbox, 
                 self.rval_thr_spinbox):
             widget.valueChanged.connect(self.on_threshold_spinbox_changed)
-            
+        self.evaluate_button.clicked.connect(self.mainwindow.on_evaluate_button_clicked)
+        
         
     def update_treshold_spinboxes(self):
         cnm=self.mainwindow.cnm
+        self.evaluate_button.setEnabled(cnm is not None and cnm.estimates.r_values is not None and self.mainwindow.data_array is not None)
         if cnm is None:
             self.SNR_lowest_spinbox.setEnabled(False)
             self.min_SNR_spinbox.setEnabled(False)
@@ -1552,6 +1964,27 @@ class ScatterWidget(QWidget):
         #print(f'Calling JS: {js_cmd}')
         self.parameters_view.page().runJavaScript(js_cmd)
         
+    def update_totals(self):
+        cnm=self.mainwindow.cnm
+        if cnm is None:
+            self.good_label.setEnabled(False)
+            self.bad_label.setEnabled(False) 
+            self.total_label.setEnabled(False)
+            return
+        cnme=cnm.estimates
+        self.total_label.setText(f'    Total: {self.mainwindow.numcomps}')
+        self.total_label.setEnabled(True)
+        if not cnme.idx_components is None:
+            self.good_label.setText(f'    Good: {len(cnme.idx_components)}')
+            self.good_label.setEnabled(True)
+            self.bad_label.setText(f'    Bad: {len(cnme.idx_components_bad)}')
+            self.bad_label.setEnabled(True)  
+        else:
+            self.good_label.setText('    Good: --')
+            self.good_label.setEnabled(False)
+            self.bad_label.setText('    Bad: --')
+            self.bad_label.setEnabled(False)   
+        
 class PythonBridge(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1580,7 +2013,7 @@ class SpatialWidget(QWidget):
         left_layout.addWidget(head_label)
 
         self.channel_combo = QComboBox()
-        self.channel_combo.addItem('--')
+        self.channel_combo.addItem('A')
         self.channel_combo.setToolTip('Select spatial data to display')
         left_layout.addWidget(self.channel_combo)  
         
@@ -1604,7 +2037,7 @@ class SpatialWidget(QWidget):
         my_layot.addWidget(self.spatial_view, stretch=1)        
         
         self.setLayout(my_layot)        
-        
+        self.ctime=0
         #event hadlers
         self.channel_combo.currentIndexChanged.connect(self.on_channel_combo_changed)
         self.spatial_zoom_button.clicked.connect(self.on_spatial_zoom)
@@ -1629,7 +2062,7 @@ class SpatialWidget(QWidget):
         
     def perform_spatial_zoom_on_component(self, index):
         zoomwindow=self.mainwindow.neuron_diam*1.5
-        coord=self.component_centers[index,:]
+        coord=self.mainwindow.component_centers[index,:]
         xrange=coord[0]-zoomwindow,coord[0]+zoomwindow
         yrange=coord[1]-zoomwindow,coord[1]+zoomwindow
         self.spatial_view.setRange(xRange=xrange, yRange=yrange, padding=0.0)
@@ -1688,10 +2121,9 @@ class SpatialWidget(QWidget):
             self.spatial_zoom_button.setEnabled(False)
         else:
             self.spatial_zoom_auto_checkbox.setEnabled(True)
-            self.spatial_zoom_auto_checkbox.setChecked(False)
+            #self.spatial_zoom_auto_checkbox.setChecked(False)
             self.spatial_zoom_button.setEnabled(True)
-            self.component_contour_coords = [cnme.coordinates[idx]['coordinates'] for idx in range(numcomps)]
-            self.component_centers = np.array([cnme.coordinates[idx]['CoM'] for idx in range(numcomps)])
+
         
         if cnme.idx_components is None:
             selectable_combo_names=['All', 'Selected', 'None']
@@ -1714,8 +2146,8 @@ class SpatialWidget(QWidget):
         self.badpen=pg.mkPen(color='r', width=1)
         self.selectedpen=pg.mkPen(color='y', width=2)
         self.contur_items=[]
-        for idx_to_plot in range(len(self.component_contour_coords)):
-            component_contour = self.component_contour_coords[idx_to_plot]
+        for idx_to_plot in range(len(self.mainwindow.component_contour_coords)):
+            component_contour = self.mainwindow.component_contour_coords[idx_to_plot]
             component_contour=component_contour[1:-1,:]
             curve = pg.PlotCurveItem(x=component_contour[:, 1], y=component_contour[:, 0], name=f'{idx_to_plot}', pen=self.goodpen,  clickable=True, fillLevel=0.5)
             curve.sigClicked.connect(self.on_contour_click)
@@ -1733,6 +2165,11 @@ class SpatialWidget(QWidget):
         cnme=self.mainwindow.cnm.estimates
         
         possible_array_text=['A']
+        if self.mainwindow.data_array is not None:
+            possible_array_text.append('Data')
+            possible_array_text.append('Residuals')
+        possible_array_text.append('RCM')
+        possible_array_text.append('RCB')
         numbackround=cnme.b.shape[-1]
         for i in range(numbackround):
             possible_array_text.append(f'B{i}')
@@ -1763,6 +2200,14 @@ class SpatialWidget(QWidget):
         plot_item = self.spatial_view.getPlotItem()
         if array_text == 'A':
             ctitle=f'Spatial component footprint ({component_idx})'
+        elif array_text == 'Data':
+            ctitle=f'Original data (movie)'
+        elif array_text == 'RCM':
+            ctitle=f'Reconstructed movie (A ⊗ C) (movie)'
+        elif array_text == 'RCB':
+            ctitle=f'Reconstructed background (b ⊗ f) (movie)'
+        elif array_text == 'Residuals':
+            ctitle=f'Residuals (Y - (A ⊗ C) - (b ⊗ f)) (movie)'
         elif array_text[0] == 'B':
             ctitle=f'Background component {int(array_text[1:])}'
         elif array_text == 'Cn':
@@ -1816,28 +2261,67 @@ class SpatialWidget(QWidget):
             self.selectedpen.setColor(pg.mkColor(0, 0, 0, 0))
         else:
             raise ValueError(f'Invalid contour mode: {contour_mode}')
-            
-        for idx_to_plot in range(len(self.component_contour_coords)):
+        
+        #setting component contour graphics properties
+        if  cnme.idx_components is not None:
+            if self.mainwindow.limit == 'All':
+                clickarray=[True]*self.mainwindow.numcomps
+            elif self.mainwindow.limit == 'Good':
+                clickarray=np.zeros(self.mainwindow.numcomps, dtype=bool)
+                clickarray[cnme.idx_components]=True
+            else:
+                clickarray=np.zeros(self.mainwindow.numcomps, dtype=bool)
+                clickarray[cnme.idx_components_bad]=True
+        else:
+            clickarray=[True]*self.mainwindow.numcomps
+        for idx_to_plot in range(self.mainwindow.numcomps):
             if idx_to_plot==component_idx:
                 peny=self.selectedpen
             elif cnme.idx_components is None or idx_to_plot in cnme.idx_components:
                 peny=self.goodpen
             else:    
                 peny=self.badpen
-            self.contur_items[idx_to_plot].setPen(peny)                                      
-
-                
+            self.contur_items[idx_to_plot].setPen(peny)
+            self.contur_items[idx_to_plot].setClickable(clickarray[idx_to_plot])                                       
+            
         
     def update_spatial_view_image(self, setLUT=False):
         #update only the image according to t
         
         array_text=self.channel_combo.currentText()
         component_idx = self.mainwindow.selected_component
-        t=self.mainwindow.time
+        t=self.mainwindow.selected_frame
+        w=self.mainwindow.frame_window
+        tmin=t-w if t-w>0 else 0
+        tmax=t+w+1 if t+w+1<self.mainwindow.num_frames else self.mainwindow.num_frames        
+        #residuals = self._raw_movie[indices] - self._rcm[indices] - self._rcb[indices]
         
         if array_text == 'A':
-            image_data = np.reshape(self.mainwindow.cnm.estimates.A[:, component_idx].toarray(), self.mainwindow.dims) #(self.dims[1], self.dims[0]), order='F').T
-            #todo ismétlések skippelve legyenek
+            image_data = np.reshape(self.mainwindow.cnm.estimates.A[:, component_idx], self.mainwindow.dims) #(self.dims[1], self.dims[0]), order='F').T
+        elif array_text == 'Data':
+            #print('display: elapsed off {:.2f}'.format((time.perf_counter()-self.ctime)))
+            #self.ctime=time.perf_counter()
+            res=self.mainwindow.data_array[:,tmin:tmax]
+            res=np.mean(res, axis=1)
+
+            image_data = res.reshape(self.mainwindow.dims)
+        elif array_text == 'RCM':
+            res=np.dot(self.mainwindow.cnm.estimates.A[:, :] , self.mainwindow.cnm.estimates.C[:, tmin:tmax])
+            res=np.mean(res, axis=1)
+            image_data = res.reshape(self.mainwindow.dims)
+        elif array_text == 'RCB':
+            res=np.dot(self.mainwindow.cnm.estimates.b[:, :] , self.mainwindow.cnm.estimates.f[:, tmin:tmax])
+            res=np.mean(res, axis=1)
+            image_data = res.reshape(self.mainwindow.dims)
+        elif array_text == 'Residuals':
+            res=self.mainwindow.data_array[:,tmin:tmax]
+            res=np.mean(res, axis=1)
+            rcm=np.dot(self.mainwindow.cnm.estimates.A[:, :] , self.mainwindow.cnm.estimates.C[:, tmin:tmax])
+            rcm=np.mean(rcm, axis=1)
+            rcb=np.dot(self.mainwindow.cnm.estimates.b[:, :] , self.mainwindow.cnm.estimates.f[:, tmin:tmax])
+            rcb=np.mean(rcb, axis=1)
+            res=res-rcm-rcb
+            image_data = res.reshape(self.mainwindow.dims)
         elif array_text[0] == 'B':
             try:
                 bgindex = int(array_text[1:])
@@ -1855,7 +2339,7 @@ class SpatialWidget(QWidget):
         
         # Update image data
         self.spatial_image.setImage(image_data, autoLevels=False)
-        
+   
         if setLUT:
             # Update colorbar limits explicitly
             min_val, max_val = np.min(image_data), np.max(image_data)
@@ -1871,21 +2355,6 @@ class SpatialWidget(QWidget):
                 if index in self.mainwindow.cnm.estimates.idx_components:
                     return
         self.mainwindow.set_selected_component(index, 'spatial') 
-        
-        '''
-        masks for polygons
-
-        for n, ix in enumerate(component_indices):
-            s = cnmf_obj.estimates.A[:, ix].toarray().reshape(cnmf_obj.dims, order='F')
-            s[s >= threshold] = 1
-            s[s < threshold] = 0
-
-            masks[:, :, n] = s.astype(bool)
-        '''
-
-
-
-
             
 if __name__ == '__main__':
     app = QApplication(sys.argv)

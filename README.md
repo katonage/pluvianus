@@ -14,30 +14,27 @@ A feature-rich brosing, editing GUI for manual data verification and acceptance 
 
 ## Future plans
 ### 0
-* t axis
-* saving proj images
-* component filtering
-* computing raw traces from raw data
 * plotting secondary axis on temporal (atorange?)
-* hover on spatial view
-* exporting to npy, csv, good, all - other?
+* exporting to mescroi
 * saving hdf5
-* collapsible toolbars
 * keyboard shortcuts
+* test exported npz files
 
 ### Next
-* step through components sorted according to metrics
+* step components sorted according to metrics
+* hover on spatial view
 * autorange on temporal curves considering all components
 * optional ms and um display on axes
 * Movement correction of raw files from OnACID pipeline
 * Edit parameters of the compute menu options
-* beginnar and advanced modes
+* toolbars resizable to smaller than their size to allow better splitter flexibility
+* beginner and advanced modes
 * ask for CaImAn dependencies 
 
 #### Expertiese wanted
-* Refactor scatterplot to get rid of plotly
+* Refactor scatterplot to get rid of plotly, get rid of resetting camera positions on update
 * support of 3D data
 * Packaging and distribution
 * Documentation
-* marketing in CaImAn community
+* marketing in/to CaImAn community
 
