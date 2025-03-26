@@ -160,7 +160,55 @@ class BackgroundWindow(QMainWindow):
         self.temporal_widget.clear()
         self.temporal_widget.plot(temporal_data, pen='b')
         self.temporal_widget.getPlotItem().setTitle(f'Temporal component {component_idx}')
-            
+           
+class PlotWidgetWithRightAxis(pg.PlotWidget):
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize a PlotWidgetWithRightAxis instance, a child of pg.PlotWidget.
+
+        This constructor sets up the plot widget with an additional right axis.
+        It creates a new ViewBox for the right axis, links it to the main plot,
+        and applies styling to the right axis. The right axis color is set to 
+        dark blue by default. The view geometry is updated to synchronize with 
+        the main plot's ViewBox when resized.
+        
+        You can acces the right axis by calling self.RightViewBox, e.g.:
+            self.RightViewBox.addItem(pg.PlotCurveItem(...))   
+        You can set the right axis color by calling self.setRightColor(...) e.g.:
+            self.setRightColor('#ff008b') 
+
+        Parameters (passed to the PlotWidget parent class constructor):
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+        """
+
+        super(PlotWidgetWithRightAxis, self).__init__(*args, **kwargs)
+
+        self.showAxis('right')
+        self.RightViewBox = pg.ViewBox()
+        self.plotItem.scene().addItem(self.RightViewBox)
+
+        right_axis = self.getAxis('right')
+        right_axis.linkToView(self.RightViewBox)
+        self.RightViewBox.setXLink(self)
+        self.RightColor = '#00008b' #default dark blue
+        right_axis.setStyle(showValues=True)
+        self.setRightColor(self.RightColor)
+
+        self._updateViews()
+        self.plotItem.vb.sigResized.connect(self._updateViews)
+
+    def _updateViews(self):
+        self.RightViewBox.setGeometry(self.plotItem.vb.sceneBoundingRect())
+        self.RightViewBox.linkedViewChanged(self.plotItem.vb, self.RightViewBox.XAxis)
+        
+    def setRightColor(self, color):
+        self.RightColor = color
+        right_axis = self.getAxis('right')
+        right_axis.setPen(pg.mkPen(self.RightColor))       
+        right_axis.setLabel('axis2', color=self.RightColor)
+        right_axis.setTextPen(pg.mkPen(self.RightColor))
+        
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -302,8 +350,8 @@ class MainWindow(QMainWindow):
         self.file_changed = False # flag for storing if file has changed
         self.online = False # flag for OnACID files
         self.selected_component = 0 # index of selected component
-        self.selected_frame = 0 # index of selected frame
         self.num_frames = 0  # number of frames in movie
+        self.selected_frame = 0 # index of selected frame
         self.frame_window = 0 # temporal window of displaying movie frames (half window, in frames)
         self.limit='All' # restriction on selecting components according to their good/bad assignment
         self.manual_acceptance_assigment_has_been_made = False # flag for storing if manual component assignment has been made
@@ -426,11 +474,10 @@ class MainWindow(QMainWindow):
         self.temporal_widget.update_temporal_view()
         self.spatial_widget.update_spatial_view()
         self.spatial_widget2.update_spatial_view()
-    
+        self.scatter_widget.update_component_assignment_buttons()
 
     def set_component_assignment_manually(self, state, component=None):
-        # Handle the toggle button click event
-        print(f"The {state} button was toggled")
+        #print(f"The {state} button was toggled") # Handle the toggle button click event
         if component is None:
             component=self.selected_component
         changed=False
@@ -454,7 +501,11 @@ class MainWindow(QMainWindow):
             self.set_selected_component(component, 'direct')
             self.scatter_widget.update_totals()
             self.scatter_widget.update_selected_component_on_scatterplot(self.selected_component)
-    
+        else:
+            self.scatter_widget.update_component_assignment_buttons()
+            
+
+        
     def set_selected_frame(self, value, window=None):
         if self.cnm is None:
             return
@@ -654,6 +705,7 @@ class MainWindow(QMainWindow):
             self.dims=self.cnm.dims
         self.dims=(self.dims[1], self.dims[0])
         self.num_frames=self.cnm.estimates.C.shape[-1]
+        self.selected_frame=int(self.num_frames/2)
         self.numcomps=self.cnm.estimates.A.shape[-1]
         print(f'Data frame dimensions: {self.dims} x {self.num_frames} frames')
         self.framerate=self.cnm.params.data['fr'] #Hz
@@ -661,7 +713,7 @@ class MainWindow(QMainWindow):
         self.frame_window=int(round(self.decay_time*self.framerate))
         self.neuron_diam=np.mean(self.cnm.params.init['gSiz'])*2 #pixels
         self.pixel_size=self.cnm.params.data['dxy'] #um
-        print(f'Frame rate: {self.framerate} Hz, decay time: {self.decay_time} sec, neuron diameter: {self.neuron_diam} pixels, pixel size: {self.pixel_size} um')
+        print(f'Frame rate: {self.framerate:.3f} Hz, decay time: {self.decay_time} sec, neuron diameter: {self.neuron_diam} pixels, pixel size: {self.pixel_size} um')
         
         #ensuring A is dense
         self.cnm.estimates.A = self.cnm.estimates.A.toarray()
@@ -697,10 +749,11 @@ class MainWindow(QMainWindow):
         
         self.temporal_widget.update_limit_component_type()
         self.temporal_widget.update_array_selector()
+        self.temporal_widget.update_array_selector(right_axis=True)
         self.spatial_widget.recreate_spatial_view()
         self.spatial_widget2.recreate_spatial_view()
         self.scatter_widget.update_treshold_spinboxes()
-                  
+                          
         self.opts_action.setEnabled(self.cnm is not None)
         self.info_action.setEnabled(self.cnm is not None)
         self.open_data_action.setEnabled(self.cnm is not None)
@@ -729,17 +782,18 @@ class MainWindow(QMainWindow):
         self.temporal_widget.time_spinbox.setEnabled(self.cnm is not None)
         self.temporal_widget.time_window_spinbox.setEnabled(self.cnm is not None)
         self.temporal_widget.rlavr_spinbox.setEnabled(self.cnm is not None)
+        self.temporal_widget.rlavr_spinbox2.setEnabled(self.cnm is not None)
         self.temporal_widget.time_slider.setRange(0, self.num_frames-1)
         self.temporal_widget.time_spinbox.setRange(0, self.num_frames-1)        
         
         if  self.cnm is None:
             self.temporal_widget.component_spinbox.setEnabled(False)
-            self.temporal_widget.array_selector.setEnabled(False)
             self.update_title()
             self.temporal_widget.recreate_temporal_view()
             self.plot_parameters()
             self.scatter_widget.update_totals()
             self.update_title()
+            self.scatter_widget.update_component_assignment_buttons()
             return
          
         self.temporal_widget.update_component_spinbox(self.selected_component)
@@ -1192,9 +1246,9 @@ class MainWindow(QMainWindow):
             text = [str(i) for i in range(num_components)],
             hovertemplate = '<br>'.join([
                 'Index: %{text}',
-                'CNN prediction: %{x:.2f}',
-                'R value: %{y:.2f}',
-                'SNR: %{z:.2f}'
+            #    'CNN prediction: %{x:.2f}',
+            #    'R value: %{y:.2f}',
+            #    'SNR: %{z:.2f}'
             ]) + '<extra></extra>'
         ))
         
@@ -1224,7 +1278,8 @@ class MainWindow(QMainWindow):
                         z = line['z'],
                         mode = 'lines',
                         line = dict(color = line['color'], width = 1, dash = 'dash'),
-                        name = name
+                        name = name, 
+                        hoverinfo='skip'
                 ))
         
         fig.update_layout(scene=dict(
@@ -1337,9 +1392,9 @@ class TopWidget(QWidget):
         
         my_layot=QHBoxLayout(self)
         
-                # Top plot: Temporal (full width)
-        self.temporal_view = pg.PlotWidget()
-          
+        # Top plot: Temporal 
+        self.temporal_view = PlotWidgetWithRightAxis() #override of pg.PlotWidget
+        self.temporal_view.setRightColor('#8b0000')
         # Create a container widget inside scroll area
         scroll_content = QWidget()
         left_layout = QVBoxLayout(scroll_content)
@@ -1385,10 +1440,26 @@ class TopWidget(QWidget):
         self.rlavr_spinbox.setPrefix('Avr: ')
         left_layout.addWidget(self.rlavr_spinbox)
         
+        self.array_selector2 = QComboBox()
+        self.array_selector2.setFixedWidth(90)
+        self.array_selector2.addItem('-')
+        self.array_selector2.setToolTip('Select temporal array to plot on the right axis')
+        left_layout.addWidget(self.array_selector2)
+        
+        self.rlavr_spinbox2 = QSpinBox()
+        self.rlavr_spinbox2.setMinimum(0)
+        self.rlavr_spinbox2.setMaximum(100)
+        self.rlavr_spinbox2.setValue(0)
+        self.rlavr_spinbox2.setToolTip('Sets running average Gauss kernel on the displayed data (right axis)')
+        self.rlavr_spinbox2.setFixedWidth(90)
+        self.rlavr_spinbox2.setPrefix('Avr: ')
+        left_layout.addWidget(self.rlavr_spinbox2)
+        
         self.temporal_zoom_button = QPushButton('Zoom')
         self.temporal_zoom_button.setToolTip('Centers view on largest peak on C, with zoom corresponding to decay time')
         left_layout.addWidget(self.temporal_zoom_button)
         self.temporal_zoom_auto_checkbox = QCheckBox('Auto')
+        self.temporal_zoom_auto_checkbox.setStyleSheet('margin-left: 8px;')   
         self.temporal_zoom_auto_checkbox.setToolTip('Centers view on largest peak on C, with zoom corresponding to decay time')
         left_layout.addWidget(self.temporal_zoom_auto_checkbox)
         head_label=QLabel('Metrics:')
@@ -1401,33 +1472,8 @@ class TopWidget(QWidget):
         left_layout.addWidget(self.component_params_r)
         left_layout.addWidget(self.component_params_SNR)
         left_layout.addWidget(self.component_params_CNN)
-        
-        head_label=QLabel('Accept:')
-        head_label.setStyleSheet('font-weight: bold; margin-top: 10px;')
-        left_layout.addWidget(head_label)
-
-        # Create a layout for the toggle buttons
-        toggle_button_layout = QHBoxLayout()
-        toggle_button_layout.setSpacing(0)
-        good_toggle_button = QPushButton('Good')
-        good_toggle_button.setFixedWidth(45)
-        good_toggle_button.setCheckable(True)
-        good_toggle_button.setContentsMargins(0, 0, 0, 0)
-        good_toggle_button.setToolTip('Accept component manually as good')
-        #good_toggle_button.setStyleSheet('background-color: white; color: green;')
-        toggle_button_layout.addWidget(good_toggle_button)
-        self.good_toggle_button = good_toggle_button
-        bad_toggle_button = QPushButton('Bad')
-        bad_toggle_button.setFixedWidth(45)
-        bad_toggle_button.setContentsMargins(0, 0, 0, 0)
-        bad_toggle_button.setCheckable(True)
-        bad_toggle_button.setStyleSheet('background-color: white; color: red;')
-        bad_toggle_button.setToolTip('Reject component manually to bad')
-        toggle_button_layout.addWidget(bad_toggle_button)
-        self.bad_toggle_button = bad_toggle_button
-        # Add the toggle button layout to the left layout
-        left_layout.addLayout(toggle_button_layout)        
-        
+        left_layout.setContentsMargins(0, 0,5,5)
+               
         # Create scroll area
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)  # Makes the scroll area resize with the window
@@ -1436,19 +1482,19 @@ class TopWidget(QWidget):
         #head_label.setStyleSheet('background-color: green;')
         #self.temporal_zoom_auto_checkbox.setStyleSheet('background-color: green;')
         #head_label.setStyleSheet('background-color: blue;')
-        left_layout.setContentsMargins(6, 1, 10, 1)
-        my_layot.setContentsMargins(1 , 1, 6, 1)
+        ##left_layout.setContentsMargins(6, 1, 10, 1)
+        my_layot.setContentsMargins(6, 1, 6, 1)
     
         # Set scroll content as scroll area widget
         scroll_area.setWidget(scroll_content)
         my_layot.addWidget(scroll_area)
         
         right_layout=QVBoxLayout()
-        left_layout.setContentsMargins(0, 1, 9, 9)
+        ##left_layout.setContentsMargins(0, 1, 9, 9)
        
         right_layout.addWidget(self.temporal_view, stretch=1) 
         time_layout=QHBoxLayout()
-        left_layout.setContentsMargins(0, 0,5,5)
+        
        
         time_label=QLabel('Time:')
         time_layout.addWidget(time_label)
@@ -1477,13 +1523,13 @@ class TopWidget(QWidget):
         
         #event hadlers
         self.component_spinbox.valueChanged.connect(self.on_component_spinbox_changed)
-        self.rlavr_spinbox.valueChanged.connect(self.on_rlavr_spinbox_changed)
         self.limit_component_type_combo.currentTextChanged.connect(self.on_limit_component_type_changed)
+        self.rlavr_spinbox.valueChanged.connect(self.on_rlavr_spinbox_changed)
         self.array_selector.currentTextChanged.connect(self.on_array_selector_changed)  
+        self.rlavr_spinbox2.valueChanged.connect(self.on_rlavr_spinbox_changed)
+        self.array_selector2.currentTextChanged.connect(self.on_array_selector_changed)  
         self.temporal_zoom_button.clicked.connect(self.on_temporal_zoom)
         self.temporal_zoom_auto_checkbox.stateChanged.connect(self.on_temporal_zoom_auto_changed)
-        self.good_toggle_button.clicked.connect(lambda: self.mainwindow.set_component_assignment_manually('Good'))
-        self.bad_toggle_button.clicked.connect(lambda: self.mainwindow.set_component_assignment_manually('Bad'))
     
     def on_time_widget_changed(self, value, source):
         #print(f'{inspect.stack()[1][3]} called with value {value}{source}')
@@ -1527,35 +1573,28 @@ class TopWidget(QWidget):
         self.mainwindow.limit = text
         self.mainwindow.set_selected_component(self.mainwindow.selected_component, 'direct')
     
-    def on_array_selector_changed(self, text):
-        #[ 'F_dff', 'C',  'S', 'YrA', 'R', 'noisyC', 'C_on']
-        tooltips={'C': 'Temporal traces', 
-                  'F_dff': '\u0394F/F normalized activity trace', 
-                  'S': 'Deconvolved neural activity trace', 
-                  'YrA': 'Trace residuals', 
-                  'R': 'Trace residuals', 
-                  'noisyC': 'Temporal traces (including residuals plus background)', 
-                  'C_on': '?', 
-                  'Data': 'Original fluorescence trace calculated from contour polygons', 
-                  'Data neuropil': 'Original fluorescence trace neuropil mean'}
-        self.update_temporal_view()
-        self.array_selector.setToolTip(tooltips[text])
-
     def on_temporal_zoom_auto_changed(self, state):
         if self.temporal_zoom_auto_checkbox.isChecked():
             self.mainwindow.perform_temporal_zoom()
     
     def on_temporal_zoom(self):
         self.mainwindow.perform_temporal_zoom()
-    
-   
   
-    def update_array_selector(self, value=None):
+    def on_array_selector_changed(self, text):
+        self.update_temporal_view()
+        
+    def update_array_selector(self, value=None, right_axis=False):
+        if right_axis:
+            combo=self.array_selector2
+        else:
+            combo=self.array_selector
         cnm=self.mainwindow.cnm
         if cnm is None:
-            self.array_selector.setEnabled(False)
+            combo.setEnabled(False)
             return
         selectable_array_names=[]
+        if right_axis:
+            selectable_array_names.append('-')
         possible_array_names = [ 'F_dff', 'C',  'S', 'YrA', 'R', 'noisyC', 'C_on']
         for array_name in possible_array_names:
             temparr = getattr(cnm.estimates, array_name)
@@ -1565,27 +1604,27 @@ class TopWidget(QWidget):
             selectable_array_names.append('Data')
         if self.mainwindow.orig_trace_array_neuropil is not None:
             selectable_array_names.append('Data neuropil')
-        print('Selectable array names:', selectable_array_names)
         if value is None:
-            previous_selected_array = self.array_selector.currentText()
+            previous_selected_array = combo.currentText()
         else:
-            previous_selected_array = value
-        self.array_selector.blockSignals(True)
-        self.array_selector.clear()
-        self.array_selector.addItems(selectable_array_names)
+            previous_selected_array = value 
+            
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(selectable_array_names)
         if previous_selected_array in selectable_array_names:
-            self.array_selector.setCurrentText(previous_selected_array)
+            combo.setCurrentText(previous_selected_array)
         else:
-            self.array_selector.setCurrentIndex(0)
-        self.array_selector.setEnabled(True) 
-        self.array_selector.blockSignals(False)
+            combo.setCurrentIndex(0)
+        #print(f'Update_array_selector: right:{right_axis}, prev:{previous_selected_array}, curr:{combo.currentText()}, Selectable array names:', selectable_array_names)
+        combo.setEnabled(True) 
+        combo.blockSignals(False)
     
     def recreate_temporal_view(self):
         #.update_all esetén
         self.temporal_zoom_auto_checkbox.setEnabled(self.mainwindow.cnm is not None)
         self.temporal_zoom_button.setEnabled(self.mainwindow.cnm is not None)
-        self.good_toggle_button.setEnabled(self.mainwindow.cnm is not None)
-        self.bad_toggle_button.setEnabled(self.mainwindow.cnm is not None)
+
         #self.temporal_zoom_auto_checkbox.setChecked(False)
         
         self.temporal_view.clear()
@@ -1600,8 +1639,6 @@ class TopWidget(QWidget):
             self.temporal_view.setBackground(QColor(200, 200, 210, 127))
             return
         
-        cnme=self.mainwindow.cnm.estimates
-        
         self.temporal_view.getPlotItem().getViewBox().setMouseEnabled(x=True, y=True)
         self.temporal_view.setBackground(None)
         self.temporal_view.setDefaultPadding( 0.0 )
@@ -1609,13 +1646,12 @@ class TopWidget(QWidget):
         self.temporal_view.getPlotItem().showAxes(True, showValues=(True, False, False, True))
         self.temporal_view.getPlotItem().setContentsMargins(0, 0, 10, 0)  # add margin to the right
   
-        if not cnme.idx_components is None:
-            self.good_toggle_button.setEnabled(False)
-            self.bad_toggle_button.setEnabled(False)
-
         self.mainwindow.scatter_widget.update_totals()
         
-        self.temporal_line1=self.temporal_view.plot(x=[0,1 ], y=[0,3], pen=pg.mkPen('r', width=1), name='component')
+        self.temporal_line1=self.temporal_view.plot(x=[0,self.mainwindow.num_frames-1 ], y=[0,0], pen=pg.mkPen('r', width=1), name='component')
+        self.temporal_line2 = pg.PlotCurveItem(x=[0,self.mainwindow.num_frames-1 ], y=[0,0], pen=pg.mkPen('g', width=1), name='component2')
+        self.temporal_view.RightViewBox.addItem(self.temporal_line2)
+    
         
         self.temporal_marker_P = pg.InfiniteLine(pos=2, angle=90, movable=False, pen=pg.mkPen('darkgrey', width=2))
         self.temporal_view.addItem(self.temporal_marker_P)
@@ -1625,50 +1661,80 @@ class TopWidget(QWidget):
         self.temporal_view.addItem(self.temporal_marker)
         self.temporal_marker.sigPositionChangeFinished.connect(lambda line=self.temporal_marker: line.setPen(pg.mkPen('r', width=2)))
         self.temporal_marker.sigDragged.connect(self.on_temporal_marker_dragged)
+        self.temporal_view.sceneObj.sigMouseClicked.connect(self.on_mouseClickEvent)
+        self.temporal_view.getPlotItem().sigXRangeChanged.connect(self.on_range_changed)
+        self.temporal_view.setLabel('bottom', 'Frame Number')
         self.update_temporal_view()
 
     def update_temporal_view(self):
+                
+        def _get_trace(self, index, array_text, rlavr_width):    
+            if array_text == 'C':
+                ctitle=f'Temporal Component ({index})'
+            elif array_text == 'F_dff':
+                ctitle=f'\u0394F/F ({index})'
+            elif array_text == 'YrA':
+                ctitle=f'Residual ({index})'
+            elif array_text == 'S':
+                ctitle=f'Spike count estimate ({index})'
+            elif array_text== 'Data':
+                ctitle=f'Original fluorescence trace ({index})'
+            elif array_text== 'Data neuropil':
+                ctitle=f'Original fluorescence trace neuropil mean'
+            else:
+                ctitle=f'Temporal Component ({array_text}, {index})'
+            
+            #array_names = ['C', 'f', 'YrA', 'F_dff', 'R', 'S', 'noisyC', 'C_on']
+            if array_text == 'Data':
+                y=self.mainwindow.orig_trace_array[index, :]
+            elif array_text== 'Data neuropil':
+                y=self.mainwindow.orig_trace_array_neuropil
+            else:
+                y=getattr(self.mainwindow.cnm.estimates, array_text)[index, :]
+                if len(y) > self.mainwindow.num_frames:
+                    y = y[-self.mainwindow.num_frames:] # in case of noisyC or C_on   
+            
+            if rlavr_width>0:
+                kernel = gaussian(2*rlavr_width+1, rlavr_width)
+                kernel = kernel / np.sum(kernel)
+                y = np.convolve(y, kernel, mode='same')
+            return y, ctitle
+        
+        tooltips={'C': 'Temporal traces', 
+            'F_dff': '\u0394F/F normalized activity trace', 
+            'S': 'Deconvolved neural activity trace', 
+            'YrA': 'Trace residuals', 
+            'R': 'Trace residuals', 
+            'noisyC': 'Temporal traces (including residuals plus background)', 
+            'C_on': '?', 
+            'Data': 'Original fluorescence trace calculated from contour polygons', 
+            'Data neuropil': 'Original fluorescence trace neuropil mean', 
+            '-': 'No right axis displayed'}
         
         index = self.mainwindow.selected_component
         array_text=self.array_selector.currentText()
-        cnme=self.mainwindow.cnm.estimates
+        self.array_selector.setToolTip(tooltips[array_text]) 
         
-        if array_text == 'C':
-            ctitle=f'Temporal Component ({index})'
-        elif array_text == 'F_dff':
-            ctitle=f'\u0394F/F ({index})'
-        elif array_text == 'YrA':
-            ctitle=f'Residual ({index})'
-        elif array_text == 'S':
-            ctitle=f'Spike count estimate ({index})'
-        elif array_text== 'Data':
-            ctitle=f'Original fluorescence trace ({index})'
-        elif array_text== 'Data neuropil':
-            ctitle=f'Original fluorescence trace neuropil mean'
-        else:
-            ctitle=f'Temporal Component ({array_text}, {index})'
-        
-        self.temporal_view.getPlotItem().setTitle(ctitle)
-        self.temporal_view.setLabel('bottom', 'Frame Number')
-        self.temporal_view.setLabel('left', f'{array_text} value')
-        
-        #array_names = ['C', 'f', 'YrA', 'F_dff', 'R', 'S', 'noisyC', 'C_on']
-        if array_text == 'Data':
-            y=self.mainwindow.orig_trace_array[index, :]
-        elif array_text== 'Data neuropil':
-            y=self.mainwindow.orig_trace_array_neuropil
-        else:
-            y=getattr(cnme, array_text)[index, :]
-            if len(y) > self.mainwindow.num_frames:
-                y = y[-self.mainwindow.num_frames:] # in case of noisyC or C_on   
-        
-        w=self.rlavr_spinbox.value()
-        if w>0:
-            kernel = gaussian(2*w+1, w)
-            kernel = kernel / np.sum(kernel)
-            y = np.convolve(y, kernel, mode='same')
+        array_text2=self.array_selector2.currentText()
+        self.array_selector2.setToolTip(tooltips[array_text2] + ' (right axis)') 
+
+        y, ctitle=_get_trace(self, index, array_text, self.rlavr_spinbox.value())
+        self.temporal_view.setLabel('left', f'{array_text} value')       
         self.temporal_line1.setData(x=np.arange(len(y)), y=y, pen=pg.mkPen(color='b', width=2), name=f'data {array_text} {index}')
-        
+        if array_text2 != '-':
+            y2, ctitle2=_get_trace(self, index, array_text2, self.rlavr_spinbox2.value())
+            self.temporal_line2.setData(x=np.arange(len(y2)), y=y2, pen=pg.mkPen(color='r', width=2), name=f'data(2) {array_text2} {index}')
+            self.temporal_line2.setVisible(True)
+            self.temporal_view.getPlotItem().setTitle(ctitle + ' - ' + ctitle2)
+            self.temporal_view.setLabel('right', f'{array_text2} value')
+            self.temporal_view.getAxis('right').setStyle(showValues=True)
+        else:
+            self.temporal_view.getPlotItem().setTitle(ctitle)
+            self.temporal_view.getAxis('right').setStyle(showValues=False)
+            self.temporal_line2.setVisible(False)
+            self.temporal_view.getAxis('right').setLabel('')
+            
+        cnme=self.mainwindow.cnm.estimates
         if not cnme.r_values is None:
             r = cnme.r_values[index]
             max_r = np.max(cnme.r_values)
@@ -1702,21 +1768,6 @@ class TopWidget(QWidget):
             self.component_params_CNN.setToolTip('use evaluate components to compute CNN predictions')
             self.component_params_CNN.setStyleSheet('color: black')
             
-        if not cnme.idx_components is None:
-            if index in cnme.idx_components:
-                self.good_toggle_button.setChecked(True)
-                self.bad_toggle_button.setChecked(False)                
-            else:
-                self.good_toggle_button.setChecked(False)
-                self.bad_toggle_button.setChecked(True)
-            self.good_toggle_button.setEnabled(True)
-            self.bad_toggle_button.setEnabled(True)
-        else:
-            self.good_toggle_button.setChecked(False)
-            self.good_toggle_button.setEnabled(False)
-            self.bad_toggle_button.setChecked(False)
-            self.bad_toggle_button.setEnabled(False)  
-        
         if self.temporal_zoom_auto_checkbox.isChecked():
             self.mainwindow.perform_temporal_zoom()
         else:
@@ -1724,9 +1775,24 @@ class TopWidget(QWidget):
             self.update_temporal_widget()
         
     def on_temporal_marker_dragged(self, line):
+        #dragging the time-line jogs the selected frame
         line.setPen(pg.mkPen('m', width=4))
         self.mainwindow.set_selected_frame(int(line.value()))
      
+    def on_mouseClickEvent(self, event):
+        #centering t, the selected frame, thus x axis on the location of the double click
+        event.accept()
+        if event.double():
+            scenepos=event.scenePos()
+            axpos= self.temporal_view.getViewBox().mapSceneToView(scenepos)
+            self.mainwindow.set_selected_frame(int(axpos.x()))
+        
+    def on_range_changed(self, viewbox, ev):
+        #interacting with axis ranges sets the selected frame to the center
+        range=viewbox.viewRange()[0]
+        center=round((range[0]+range[1])/2)
+        self.mainwindow.set_selected_frame(center)
+         
     def update_temporal_widget(self):
         value=self.mainwindow.selected_frame
         w=self.mainwindow.frame_window
@@ -1755,6 +1821,11 @@ class TopWidget(QWidget):
         self.temporal_marker_N.setValue(tmin)
         self.temporal_marker_P.setValue(tmax)
         
+        xrange=self.temporal_view.viewRange()[0]
+        xspan=xrange[1]-xrange[0]
+        xrange=(value-xspan/2, value+xspan/2)
+        self.temporal_view.getViewBox().setRange(xRange=xrange)
+        
 
 class ScatterWidget(QWidget):
     def __init__(self, main_window: MainWindow, parent=None):
@@ -1762,25 +1833,50 @@ class ScatterWidget(QWidget):
         self.mainwindow = main_window
         
         my_layout = QHBoxLayout(self)
-        # Bottom layout for Spatial and Parameters plots
-        threshold_layout = QVBoxLayout()
-        threshold_layout.setSpacing(0)
         
+        # Create a container widget inside scroll area
+        scroll_content = QWidget()
+        threshold_layout = QVBoxLayout(scroll_content)
+        
+        # Bottom layout for Spatial and Parameters plots
+        #threshold_layout = QVBoxLayout()
+        threshold_layout.setSpacing(0)
         threshold_layout.setAlignment(Qt.AlignTop)
-        head_label=QLabel('Components:')
-        head_label.setStyleSheet('font-weight: bold;')
+        
+        head_label=QLabel('Assignment:')
+        head_label.setStyleSheet('font-weight: bold; margin-top: 0px;')
         threshold_layout.addWidget(head_label)
-        self.total_label = QLabel('Total: --')
-        threshold_layout.addWidget(self.total_label)
-        self.good_label = QLabel('Good: --')
-        threshold_layout.addWidget(self.good_label)
-        self.bad_label = QLabel('Bad: --')
-        threshold_layout.addWidget(self.bad_label)
+        # Create a layout for the toggle buttons
+        toggle_button_layout = QHBoxLayout()
+        toggle_button_layout.setSpacing(0)
+        good_toggle_button = QPushButton('Good')
+        good_toggle_button.setFixedWidth(45)
+        good_toggle_button.setCheckable(True)
+        good_toggle_button.setContentsMargins(0, 0, 0, 0)
+        good_toggle_button.setToolTip('Accept component manually as good')
+        #good_toggle_button.setStyleSheet('background-color: white; color: green;')
+        toggle_button_layout.addWidget(good_toggle_button)
+        self.good_toggle_button = good_toggle_button
+        bad_toggle_button = QPushButton('Bad')
+        bad_toggle_button.setFixedWidth(45)
+        bad_toggle_button.setContentsMargins(0, 0, 0, 0)
+        bad_toggle_button.setCheckable(True)
+        bad_toggle_button.setStyleSheet('background-color: white; color: red;')
+        bad_toggle_button.setToolTip('Reject component manually to bad')
+        toggle_button_layout.addWidget(bad_toggle_button)
+        self.bad_toggle_button = bad_toggle_button
+        # Add the toggle button layout to the left layout
+        threshold_layout.addLayout(toggle_button_layout)        
+        self.good_toggle_button.clicked.connect(lambda: self.mainwindow.set_component_assignment_manually('Good'))
+        self.bad_toggle_button.clicked.connect(lambda: self.mainwindow.set_component_assignment_manually('Bad'))
         
         head_label=QLabel('Thresholds:')
-        head_label.setStyleSheet('font-weight: bold; margin-top: 10px;')
-        
+        head_label.setStyleSheet('font-weight: bold; margin-top: 0px;')
         threshold_layout.addWidget(head_label)
+        self.evaluate_button = QPushButton('Evaluate')
+        self.evaluate_button.setToolTip('Accept or reject components based on these threshold values (filter_components())')
+        threshold_layout.addWidget(self.evaluate_button)
+        
         threshold_layout.addWidget(QLabel('  SNR_lowest:'))
         self.SNR_lowest_spinbox = QDoubleSpinBox()
         self.SNR_lowest_spinbox.setToolTip('Minimum required trace SNR. Traces with SNR below this will get rejected')
@@ -1805,11 +1901,34 @@ class ScatterWidget(QWidget):
         self.rval_thr_spinbox = QDoubleSpinBox()
         self.rval_thr_spinbox.setToolTip('Space correlation threshold. Components with correlation higher than this will get accepted')
         threshold_layout.addWidget(self.rval_thr_spinbox)
-        self.evaluate_button = QPushButton('Evaluate')
-        self.evaluate_button.setToolTip('Accept or reject components based on these threshold values (filter_components())')
-        threshold_layout.addWidget(self.evaluate_button)
-                
-        my_layout.addLayout(threshold_layout)
+
+        head_label=QLabel('Totals:')
+        head_label.setStyleSheet('font-weight: bold; margin-top: 10px;')
+        threshold_layout.addWidget(head_label)
+        self.total_label = QLabel('    Total: --')
+        threshold_layout.addWidget(self.total_label)
+        self.good_label = QLabel('    Good: --')
+        threshold_layout.addWidget(self.good_label)
+        self.bad_label = QLabel('    Bad: --')
+        threshold_layout.addWidget(self.bad_label)
+        
+        #my_layout.addLayout(threshold_layout)
+        # Create scroll area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)  # Makes the scroll area resize with the window
+        scroll_area.setFixedWidth(100)
+        #scroll_area.setStyleSheet('background-color: red;')
+        #scroll_content.setStyleSheet('background-color: yellow;')
+        #head_label.setStyleSheet('background-color: green;')
+        #self.temporal_zoom_auto_checkbox.setStyleSheet('background-color: green;')
+        #head_label.setStyleSheet('background-color: blue;')
+        my_layout.setContentsMargins(5, 5, 10, 1)
+        threshold_layout.setContentsMargins(0, 0, 0, 0)
+    
+        # Set scroll content as scroll area widget
+        scroll_area.setWidget(scroll_content)
+        my_layout.addWidget(scroll_area)
+        
         
         self.parameters_view = QWebEngineView()
         self.parameters_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -1895,7 +2014,31 @@ class ScatterWidget(QWidget):
         self.rval_thr_spinbox.setSingleStep(0.1)
         self.rval_thr_spinbox.setValue(cnm.params.quality['rval_thr'])
         self.rval_thr_spinbox.blockSignals(False)
-       
+    
+    def update_component_assignment_buttons(self):
+        self.good_toggle_button.setEnabled(self.mainwindow.cnm is not None and self.mainwindow.cnm.estimates.idx_components is not None)
+        self.bad_toggle_button.setEnabled(self.mainwindow.cnm is not None and self.mainwindow.cnm.estimates.idx_components is not None)
+
+        if self.mainwindow.cnm is None:
+            return
+        
+        index=self.mainwindow.selected_component
+        cnme=self.mainwindow.cnm.estimates
+        self.good_toggle_button.blockSignals(True)
+        self.bad_toggle_button.blockSignals(True)
+        if cnme.idx_components is not None:
+            if index in cnme.idx_components:
+                self.good_toggle_button.setChecked(True)
+                self.bad_toggle_button.setChecked(False)                
+            else:
+                self.good_toggle_button.setChecked(False)
+                self.bad_toggle_button.setChecked(True)
+        else:
+            self.good_toggle_button.setChecked(False)
+            self.good_toggle_button.setEnabled(False)
+        self.bad_toggle_button.blockSignals(False)
+        self.good_toggle_button.blockSignals(False)
+        
     def on_threshold_spinbox_changed(self, value):
         cnm=self.mainwindow.cnm
         if cnm.estimates.idx_components is None:
@@ -2021,6 +2164,7 @@ class SpatialWidget(QWidget):
         self.spatial_zoom_button.setToolTip('Centers view on selected component, with zoom corresponding to neuron diameter')
         left_layout.addWidget(self.spatial_zoom_button)
         self.spatial_zoom_auto_checkbox = QCheckBox('Auto')
+        self.spatial_zoom_auto_checkbox.setStyleSheet('margin-left: 8px;')        
         self.spatial_zoom_auto_checkbox.setToolTip('Centers view on selected component, with zoom corresponding to neuron diameter')
         left_layout.addWidget(self.spatial_zoom_auto_checkbox)
      
@@ -2032,6 +2176,11 @@ class SpatialWidget(QWidget):
         self.contour_combo.addItem('--')
         self.contour_combo.setToolTip('Select contour groups to draw')
         left_layout.addWidget(self.contour_combo)  
+        
+        self.data_info_label=QLabel('')
+        self.data_info_label.setWordWrap(True)
+        #self.data_info_label.setStyleSheet('background-color: yellow;')
+        left_layout.addWidget(self.data_info_label)
         
         my_layot.addLayout(left_layout)
         my_layot.addWidget(self.spatial_view, stretch=1)        
@@ -2069,6 +2218,7 @@ class SpatialWidget(QWidget):
         
     def recreate_spatial_view(self):
         self.channel_combo.setEnabled(self.mainwindow.cnm is not None)
+        self.data_info_label.setEnabled(self.mainwindow.cnm is not None)
         
         if self.mainwindow.cnm is None:
             text='No data loaded yet'
@@ -2105,6 +2255,14 @@ class SpatialWidget(QWidget):
         plot_item.showGrid(x=False, y=False)
         plot_item.setMenuEnabled(False)
 
+        if self.mainwindow.data_array is None: 
+            self.data_info_label.setText(f'Open data array in file menu to enable more options...')
+            self.data_info_label.setFixedWidth(100)
+            self.data_info_label.setVisible(True)
+        else:
+            self.data_info_label.setText(f'')
+            self.data_info_label.setVisible(False)
+
         # Configure axis tick lengths explicitly
         for side in ('top', 'right'):
             ax = plot_item.getAxis(side)
@@ -2115,7 +2273,6 @@ class SpatialWidget(QWidget):
         self.spatial_view.setDefaultPadding( 0.0 )
         
         cnme=self.mainwindow.cnm.estimates
-        numcomps=self.mainwindow.numcomps
         if cnme.coordinates is None:
             self.spatial_zoom_auto_checkbox.setEnabled(False)
             self.spatial_zoom_button.setEnabled(False)

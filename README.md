@@ -14,7 +14,7 @@ A feature-rich brosing, editing GUI for manual data verification and acceptance 
 
 ## Future plans
 ### 0
-* plotting secondary axis on temporal (atorange?)
+* autorange of axes
 * exporting to mescroi
 * saving hdf5
 * keyboard shortcuts
