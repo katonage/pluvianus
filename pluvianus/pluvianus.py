@@ -29,6 +29,12 @@ import caiman as cm # type: ignore
 from caiman.source_extraction import cnmf # type: ignore
 from caiman.utils.visualization import get_contours as caiman_get_contours # type: ignore
 
+try:
+    from pluvianus import __version__
+except ImportError:
+    __version__ = "0.0.0-dev"
+__date__ = time.strftime("%Y-%m-%d")
+
 class OptsWindow(QMainWindow):
     def __init__(self, opts, title='Options'):
         def custom_pretty_print(d, indent=0, spacing=1):
@@ -289,9 +295,9 @@ class MainWindow(QMainWindow):
         exp_menu.addAction(self.save_mescroi_action)
         
         help_menu = self.menuBar().addMenu('Help')
-        about_action = QAction('About', self)
-        license_action = QAction('License', self)
-        source_action = QAction('Source', self)
+        about_action = QAction('About...', self)
+        license_action = QAction('License...', self)
+        source_action = QAction('Documentation & Source...', self)
         help_menu.addAction(about_action)
         help_menu.addAction(license_action)
         help_menu.addAction(source_action)
@@ -649,8 +655,19 @@ class MainWindow(QMainWindow):
         self.background_window = BackgroundWindow(self.cnm.estimates.b, self.cnm.estimates.f, self.dims)
         self.background_window.show()
     
+
     def on_about_action(self):
-        QMessageBox.about(self, "About", "Pluvianus v0.1.0.0")
+        text = f"""
+            Pluvianus: CaImAn result browser
+            A feature-rich browsing and editing GUI for manual  
+            data verification and acceptance of CaImAn results.
+
+            by Gergely Katona
+
+            Version: {__version__}
+            Date: {__date__}
+            """
+        QMessageBox.about(self, "About Pluvianus", text)
         
     def on_license_action(self):
         QMessageBox.about(self, "License", "This software is licensed under the MIT license.")

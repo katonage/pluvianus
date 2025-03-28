@@ -1,0 +1,25 @@
+[project]
+name = "pluvianus"
+dynamic = ["version"]
+description = "CaImAn result browser"
+readme = "README.md"
+authors = [
+    { name = "Gergely Katona", email = "katona.gergely@ttk.hu" }
+]
+license = { file = "LICENSE" }
+dependencies = [
+    "PySide6",
+    "numpy",
+    "pyqtgraph",
+    "caiman",
+    "matplotlib",
+    "scipy",
+    "pynapple"
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+version_scheme = "post-release"
