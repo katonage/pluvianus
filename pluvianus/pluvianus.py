@@ -426,9 +426,8 @@ class MainWindow(QMainWindow):
             return
         #print('set_selected_component', value, method)
         cnme=self.cnm.estimates
-        numcomps=cnme.A.shape[-1]
         if self.cnm is None:
-            value = min(numcomps-1, value)
+            value = min(self.numcomps-1, value)
         if method == 'direct':
             if self.limit == 'All' or cnme.idx_components is None:
                 self.selected_component = value
@@ -484,7 +483,7 @@ class MainWindow(QMainWindow):
             component=self.selected_component
         changed=False
         if self.cnm is not None and self.cnm.estimates.idx_components is not None:
-            numcomps=self.cnm.estimates.A.shape[-1]
+            numcomps=self.numcomps
             if state == 'Good':
                 if component not in self.cnm.estimates.idx_components:
                     self.cnm.estimates.idx_components = np.unique(np.append(self.cnm.estimates.idx_components, component))
@@ -609,7 +608,7 @@ class MainWindow(QMainWindow):
                 'Decay time (s)': self.decay_time, 
                 'Pixel size (um)': self.pixel_size,
                 'Neuron diameter (pix)': self.neuron_diam,
-                'Number of components': self.cnm.estimates.A.shape[-1],
+                'Number of components': self.numcomps,
                 'OnACID': self.online
                 }, 
                 'Paths': {
@@ -717,8 +716,8 @@ class MainWindow(QMainWindow):
         self.pixel_size=self.cnm.params.data['dxy'] #um
         print(f'Frame rate: {self.framerate:.3f} Hz, decay time: {self.decay_time} sec, neuron diameter: {self.neuron_diam} pixels, pixel size: {self.pixel_size} um')
         
-        #ensuring A is dense
-        self.cnm.estimates.A = self.cnm.estimates.A.toarray()
+        #creating copy of A dense
+        self.A_array = self.cnm.estimates.A.toarray()
         #ensuring contours are calculated
         if self.cnm.estimates.coordinates is None:
             thr=0.9
@@ -808,15 +807,31 @@ class MainWindow(QMainWindow):
         self.scatter_widget.recreate_scatterplot()
         self.set_selected_component(self.selected_component, 'direct')           
 
-    def save_file(self):
-        print('Save file')
-        # Implement save logic here
+    def save_file(self, ignore_overwrite_warning=False, target_filename=None):
+        if target_filename is None:
+            target_filename=self.hdf5_file
+        if target_filename:
+            if not ignore_overwrite_warning and os.path.exists(target_filename):
+                msg_box = QMessageBox(self)
+                msg_box.setText("File already exists. Overwrite?")
+                msg_box.setWindowTitle('Saving CaImAn file...')
+                msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                msg_box.setDefaultButton(QMessageBox.No)
+                result = msg_box.exec()
+                if result == QMessageBox.No:
+                    return
+            # Implement save logic here
+            self.cnm.save(target_filename)
+            self.hdf5_file = target_filename
+            self.file_changed = False
+            print('File saved as:', target_filename)
+            self.save_state()
+            self.update_title()
 
     def save_file_as(self):
-        filename, _ = QFileDialog.getSaveFileName(self, 'Save File As', '', 'All Files (*)')
+        filename, _ = QFileDialog.getSaveFileName(self, 'Save CaImAn File As', self.hdf5_file, 'HDF5 Files (*.hdf5)')
         if filename:
-            print('Save file as:', filename)
-            # Implement save as logic here
+            self.save_file(target_filename=filename, ignore_overwrite_warning=True)
 
     def open_data_file(self):
         # Logic to open a data file
@@ -1114,15 +1129,18 @@ class MainWindow(QMainWindow):
         progress_dialog.setValue(80)
         progress_dialog.setLabelText(f'Projecting to correlation image...')
         QApplication.processEvents()
+        print(Cns.shape)
         Cn = Cns.max(axis=0)
         Cn[np.isnan(Cn)] = 0
         Cn = Cn.T
+        Cn=np.array(Cn)
         self.cnm.estimates.Cn = Cn
         self.file_changed = True
         
         progress_dialog.setValue(90)
         progress_dialog.setLabelText(f'Rendering windows...')
         QApplication.processEvents()
+        self.spatial_widget.update_spatial_view(array_text='Cn')
         self.update_all()
         progress_dialog.setValue(100)
         progress_dialog.setLabelText('Done.')
@@ -1143,9 +1161,9 @@ class MainWindow(QMainWindow):
         #masks for polygons (enery threshold)
         threshold=0.9
         print(f'Calculating fluorescence traces from data file, using component masks at threshold {threshold}...')
-        A_masked = self.cnm.estimates.A >= 1
+        A_masked = self.A_array >= 1
         for i in range(self.numcomps):
-            vec=self.cnm.estimates.A[:,i]
+            vec=self.A_array[:,i]
             vec[np.isnan(vec)]=0
             vec_sorted = np.sort(vec)[::-1]
             cum_sum = np.cumsum(vec_sorted)
@@ -1824,7 +1842,6 @@ class ScatterWidget(QWidget):
         self.bad_label = QLabel('    Bad: --')
         threshold_layout.addWidget(self.bad_label)
         
-        #my_layout.addLayout(threshold_layout)
         # Create scroll area
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)  # Makes the scroll area resize with the window
@@ -1841,8 +1858,7 @@ class ScatterWidget(QWidget):
         scroll_area.setWidget(scroll_content)
         my_layout.addWidget(scroll_area)
 
-        
-        # --- Right panel: Matplotlib canvas for scatter plot ---
+        # Matplotlib canvas for scatter plot ---
         self.plt_figure = Figure()
         self.plt_canvas = FigureCanvasQTAgg(self.plt_figure)
         self.plt_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -1985,20 +2001,41 @@ class ScatterWidget(QWidget):
                     text+=f'\n{"Good" if index in cnme.idx_components else "Bad"}'
                 self.plt_annot.set_text(text)
                 self.plt_annot.set_visible(True)
+                
+                xvec = cnme.cnn_preds
+                if xvec is None:
+                    return
+                yvec = cnme.r_values
+                zvec = cnme.SNR_comp
+                xlim=self.plt_ax.get_xlim()
+                ylim=self.plt_ax.get_ylim()
+                zlim=self.plt_ax.get_zlim()
+                cnme=self.mainwindow.cnm.estimates
+                x, y, z = xvec[ind["ind"][0]], yvec[ind["ind"][0]], np.log10(zvec[ind["ind"][0]])
+                
+                x=[xlim[0], xlim[1],np.nan, x, x, np.nan,x,x]
+                y=[y,y, np.nan,ylim[0], ylim[1], np.nan,y,y]
+                z=[z, z, np.nan,z,z,np.nan,zlim[0], zlim[1]]
+                
+                self.plt_hover_marker._verts3d = (x, y, z)
+                self.plt_hover_marker.set_visible(True)
                 self.plt_canvas.draw_idle()
                 setvis=True
         if not setvis and self.plt_annot.get_visible():
             self.plt_annot.set_visible(False)
+            self.plt_hover_marker.set_visible(False)
             self.plt_canvas.draw_idle()
         
         
     def recreate_scatterplot(self):
         if self.mainwindow.cnm is None or self.mainwindow.cnm.estimates.r_values is None:
+            self.plt_figure.clf()
             text='No evaluated components.Open data array to compute component metrics.'
             self.plt_ax = self.plt_figure.add_subplot(111)
             self.plt_ax.text(0.5, 0.5, text, transform=self.plt_ax.transAxes, ha='center', va='center', size=7.8, color='k')
             self.plt_figure.patch.set_facecolor((200.0/255, 200.0/255, 210.0/255, 127.0/255))
             self.plt_ax.axis('off')
+            self.plt_canvas.draw()
             return
     
         plt.rcParams.update({
@@ -2026,9 +2063,16 @@ class ScatterWidget(QWidget):
         self.plt_figure.clf()
         self.plt_figure.patch.set_facecolor('w')
         self.plt_ax = self.plt_figure.add_subplot(111, projection='3d')
+        self.plt_ax.set_box_aspect((1,1,1),  zoom=1.1)
         
-        #self.plt_ax.set_title("Component Metrics Scatter Plot")
+        self.plt_canvas.mpl_connect("motion_notify_event", self.on_scatter_hover)
+        self.plt_canvas.mpl_connect("pick_event", self.on_scatter_point_clicked)
         
+        self.update_scatterplot()
+        
+    def update_scatterplot(self):
+        #clears figure and creates plots inside, updates scatter's coords and color
+        self.plt_ax.cla()
         self.plt_ax.zaxis.set_major_formatter(plt.FuncFormatter(lambda val, pos=None: "{:.0f}".format(round(10**val)) if val >= 1 else "{:.1g}".format(10**val)))
         
         stubs = np.array([1,2,3,4,5])
@@ -2039,15 +2083,6 @@ class ScatterWidget(QWidget):
         allstubs = np.concatenate([stubs * 10 ** m for m in np.arange(-5.0, 6.0, dtype=float)])
         self.plt_ax.zaxis.set_minor_locator(plt.FixedLocator(np.log10(allstubs)))
         
-        self.plt_ax.set_box_aspect((1,1,1),  zoom=1.1)
-        
-        self.plt_canvas.mpl_connect("motion_notify_event", self.on_scatter_hover)
-        self.plt_canvas.mpl_connect("pick_event", self.on_scatter_point_clicked)
-        
-        self.update_scatterplot()
-        
-    def update_scatterplot(self):
-        self.plt_ax.cla()
         self.plt_ax.set_xlabel("CNN prediction")
         self.plt_ax.set_ylabel("R value")
         self.plt_ax.set_zlabel("SNR")
@@ -2064,12 +2099,15 @@ class ScatterWidget(QWidget):
             
         #self.plt_figure.colorbar(self.scatter, ax=self.ax, shrink=0.5)
 
-        self.plt_annot = self.plt_ax.text2D(0.00, 1.00, "", transform=self.plt_ax.transAxes, va='top', ha='left')
+        self.plt_annot = self.plt_figure.text(0.00, 1.00, "",  va='top', ha='left')
         self.plt_annot.set_fontsize(8)
         self.plt_annot.set_visible(False)
         
-        self.plt_selected_scatterpoint = self.plt_ax.scatter(1,2, 3, marker='o', c='magenta', s=20, alpha=1)
+        self.plt_selected_scatterpoint = self.plt_ax.scatter(1,2, 3, marker='o', c='magenta', s=30, alpha=1)
         self.update_selected_component_on_scatterplot(self.mainwindow.selected_component)
+        
+        self.plt_hover_marker = self.plt_ax.plot([1], [1], [1], color='k', linewidth=0.5)[0]
+        self.plt_hover_marker.set_visible(False)
         
         self.threshold_lines = {}
         if cnme.idx_components is not None:
@@ -2468,7 +2506,7 @@ class SpatialWidget(QWidget):
         #residuals = self._raw_movie[indices] - self._rcm[indices] - self._rcb[indices]
         
         if array_text == 'A':
-            image_data = np.reshape(self.mainwindow.cnm.estimates.A[:, component_idx], self.mainwindow.dims) #(self.dims[1], self.dims[0]), order='F').T
+            image_data = np.reshape(self.mainwindow.A_array[:, component_idx], self.mainwindow.dims) #(self.dims[1], self.dims[0]), order='F').T
         elif array_text == 'Data':
             #print('display: elapsed off {:.2f}'.format((time.perf_counter()-self.ctime)))
             #self.ctime=time.perf_counter()
@@ -2477,7 +2515,7 @@ class SpatialWidget(QWidget):
 
             image_data = res.reshape(self.mainwindow.dims)
         elif array_text == 'RCM':
-            res=np.dot(self.mainwindow.cnm.estimates.A[:, :] , self.mainwindow.cnm.estimates.C[:, tmin:tmax])
+            res=np.dot(self.mainwindow.A_array[:, :] , self.mainwindow.cnm.estimates.C[:, tmin:tmax])
             res=np.mean(res, axis=1)
             image_data = res.reshape(self.mainwindow.dims)
         elif array_text == 'RCB':
@@ -2486,7 +2524,7 @@ class SpatialWidget(QWidget):
             image_data = res.reshape(self.mainwindow.dims)
         elif array_text == 'Residuals':
             res=self.mainwindow.data_array[:,tmin:tmax]
-            rcm=np.dot(self.mainwindow.cnm.estimates.A[:, :] , self.mainwindow.cnm.estimates.C[:, tmin:tmax])
+            rcm=np.dot(self.mainwindow.A_array[:, :] , self.mainwindow.cnm.estimates.C[:, tmin:tmax])
             rcb=np.dot(self.mainwindow.cnm.estimates.b[:, :] , self.mainwindow.cnm.estimates.f[:, tmin:tmax])
             res=res-rcm-rcb
             res=np.mean(res, axis=1)

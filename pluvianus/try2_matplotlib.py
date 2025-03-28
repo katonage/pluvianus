@@ -32,10 +32,13 @@ class MatplotlibWidget(QWidget):
 
         self.figure.colorbar(self.scatter, ax=self.ax, shrink=0.5)
 
-        self.annot = self.ax.text2D(0.05, 0.95, "", transform=self.ax.transAxes)
+        self.annot = self.figure.text(0.00, 1.0, "", va='top', ha='left')
         self.annot.set_visible(False)
 
         self.selection_marker = self.ax.scatter([], [], [], s=100, edgecolor='purple', facecolor='none', linewidth=2)
+        
+        self.hover_marker = self.ax.plot([1], [1], [1], color='k', linewidth=0.5)[0]
+        self.hover_marker.set_visible(False)
 
         def log_tick_formatter(val, pos=None):
             if val >=1:
@@ -69,17 +72,33 @@ class MatplotlibWidget(QWidget):
     def hover(self, event):
         def update_annot(self, ind):
             x, y, z = self.x[ind["ind"][0]], self.y[ind["ind"][0]], self.z[ind["ind"][0]]
-            self.annot.set_text(f"({x:.2f}, {y:.2f}, {z:.2f})")
+            self.annot.set_text(f"multiple\nlines\n({x:.2f}, {y:.2f}, {z:.2f})")
             self.annot.set_visible(True)
+            self.hover_marker.set_visible(False)
             
         if event.inaxes == self.ax:
             cont, ind = self.scatter.contains(event)
             if cont:
                 update_annot(self, ind)
+                
+                xlim=self.ax.get_xlim()
+                ylim=self.ax.get_ylim()
+                zlim=self.ax.get_zlim()
+                x, y, z = self.x[ind["ind"][0]], self.y[ind["ind"][0]], self.z[ind["ind"][0]]
+                
+                x=[xlim[0], xlim[1],np.nan, x, x, np.nan,x,x]
+                y=[y,y, np.nan,ylim[0], ylim[1], np.nan,y,y]
+                z=[z, z, np.nan,z,z,np.nan,zlim[0], zlim[1]]
+                
+                self.hover_marker._verts3d = (x, y, z)
+                self.hover_marker.set_visible(True)
+                
                 self.canvas.draw_idle()
+                
             else:
                 if self.annot.get_visible():
                     self.annot.set_visible(False)
+                    self.hover_marker.set_visible(False)
                     self.canvas.draw_idle()
 
     def on_pick(self, event):

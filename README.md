@@ -15,7 +15,6 @@ A feature-rich brosing, editing GUI for manual data verification and acceptance 
 ## Future plans
 ### 0
 * exporting to mescroi
-* saving hdf5
 * keyboard shortcuts
 * test exported npz files
 
@@ -26,7 +25,9 @@ A feature-rich brosing, editing GUI for manual data verification and acceptance 
 * optional ms and um display on axes
 * Movement correction of raw files from OnACID pipeline
 * Edit parameters of the compute menu options
+* command line calling with filename and datafile
 * beginner and advanced modes
+
 
 #### Expertiese wanted
 * support of 3D data
