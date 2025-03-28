@@ -4,13 +4,13 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog, QSizePolicy
 )
 from PySide6.QtGui import QAction, QColor
-from PySide6.QtCore import QObject, Signal, Slot, Qt
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices, QIcon
 import pyqtgraph as pg
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
-from matplotlib.ticker import LogLocator, ScalarFormatter
 
 import json
 import os
@@ -218,6 +218,8 @@ class MainWindow(QMainWindow):
         self.resize(1000, 700)
         pg.setConfigOptions(background='w', foreground='k')
         
+
+            
         # Setup file menu with Open, Save, Save As
         file_menu = self.menuBar().addMenu('File')
         open_action = QAction('Open CaImAn HDF5 File...', self)
@@ -322,6 +324,12 @@ class MainWindow(QMainWindow):
         self.info_action.triggered.connect(self.on_info_action)
         self.shifts_action.triggered.connect(self.on_shifts_action)
         self.bg_action.triggered.connect(self.on_bg_action)
+        
+        about_action.triggered.connect(self.on_about_action)
+        license_action.triggered.connect(self.on_license_action)
+        source_action.triggered.connect(self.on_source_action)
+        
+        
         self.resizeEvent = self.on_resize_figure
         self.closeEvent = self.on_mainwindow_closing
         
@@ -366,10 +374,7 @@ class MainWindow(QMainWindow):
         self.orig_trace_array = None # computed original fluorescence traces
         self.orig_trace_array_neuropil = None # computed original fluorescence traces' neuropil
         # correlation image is stored in the cnm object
-        
-
-        
-
+    
          
         # Update figure and state
         self.load_state()
@@ -643,6 +648,18 @@ class MainWindow(QMainWindow):
         print(self.dims)
         self.background_window = BackgroundWindow(self.cnm.estimates.b, self.cnm.estimates.f, self.dims)
         self.background_window.show()
+    
+    def on_about_action(self):
+        QMessageBox.about(self, "About", "Pluvianus v0.1.0.0")
+        
+    def on_license_action(self):
+        QMessageBox.about(self, "License", "This software is licensed under the MIT license.")
+        
+    def on_source_action(self):
+        url = QUrl("https://github.com/katonage/pluvianus")
+        if not QDesktopServices.openUrl(url):
+            QMessageBox.warning(self, "Open URL", "Could not open URL: " + url.toString())
+        
         
     def open_file(self):        
         if self.hdf5_file is None:
@@ -2610,6 +2627,10 @@ class SpatialWidget(QWidget):
             
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    try:
+        app.setWindowIcon(QIcon(os.path.join(os.path.dirname(__file__), "pluvianus.ico")))
+    except Exception as e:
+        print(f"Error setting window icon: {e}")
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
