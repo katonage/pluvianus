@@ -1,7 +1,8 @@
 import sys
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QSplitter,QScrollArea, QCheckBox,QSlider,
-    QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog, QSizePolicy
+    QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog, QSizePolicy,
+    QPlainTextEdit, QDialog, QFrame
 )
 from PySide6.QtGui import QAction, QColor
 from PySide6.QtCore import Qt, QUrl
@@ -18,6 +19,7 @@ import tempfile
 import numpy as np
 import glob
 import uuid
+import importlib
 
 import pynapple as nap
 from scipy.signal.windows import gaussian
@@ -297,7 +299,7 @@ class MainWindow(QMainWindow):
         help_menu = self.menuBar().addMenu('Help')
         about_action = QAction('About...', self)
         license_action = QAction('License...', self)
-        source_action = QAction('Documentation & Source...', self)
+        source_action = QAction('Documentation && Source...', self)
         help_menu.addAction(about_action)
         help_menu.addAction(license_action)
         help_menu.addAction(source_action)
@@ -668,9 +670,41 @@ class MainWindow(QMainWindow):
             Date: {__date__}
             """
         QMessageBox.about(self, "About Pluvianus", text)
-        
+    
     def on_license_action(self):
-        QMessageBox.about(self, "License", "This software is licensed under the MIT license.")
+
+        def read_license():
+            try:
+                if hasattr(sys, '_MEIPASS'):
+                    # PyInstaller: bundled location
+                    base_path = sys._MEIPASS
+                else:
+                    # Dev or installed: use repo root (assumes this file is in pluvianus/)
+                    base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+                license_path = os.path.join(base_path, "LICENSE")
+
+                with open(license_path, "r", encoding="utf-8") as f:
+                    return f.read()
+            except Exception as e:
+                return f"Could not load LICENSE file:\n{e}"
+              
+        dialog = QDialog(self)
+        dialog.setWindowTitle("License")
+        layout = QVBoxLayout(dialog)
+
+        text_edit = QPlainTextEdit()
+        text_edit.setReadOnly(True)        
+        text_edit.setPlainText(read_license())
+
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+
+        layout.addWidget(text_edit)
+        layout.addWidget(close_button)
+
+        dialog.resize(600, 500)
+        dialog.exec()
         
     def on_source_action(self):
         url = QUrl("https://github.com/katonage/pluvianus")
@@ -1367,7 +1401,6 @@ class TopWidget(QWidget):
         scroll_content = QWidget()
         left_layout = QVBoxLayout(scroll_content)
 
-        #left_layout = QVBoxLayout()
         left_layout.setAlignment(Qt.AlignTop)
         left_layout.setSpacing(0)
         
@@ -1394,10 +1427,26 @@ class TopWidget(QWidget):
         head_label=QLabel('Plot:')
         head_label.setStyleSheet('font-weight: bold; margin-top: 10px;')
         left_layout.addWidget(head_label)
+        
+        arr1 = QHBoxLayout()
+        arr1.setContentsMargins(0, 0, 0, 0)
+        vline = QFrame()
+        vline.setFrameShape(QFrame.VLine)
+        vline.setFrameShadow(QFrame.Plain)
+        vline.setLineWidth(1)  # thinner line
+        vline.setStyleSheet("background-color: blue;")
+        arr1.addWidget(vline)
+        arr1_but=QVBoxLayout()
+        arr1_but.setContentsMargins(0, 0, 0, 0)
+        arr1_but.setSpacing(0)
+        arr1_but.setAlignment(Qt.AlignTop)
+        arr1.addLayout(arr1_but)
+        left_layout.addLayout(arr1)
+        
         self.array_selector = QComboBox()
         self.array_selector.setFixedWidth(90)
         self.array_selector.setToolTip('Select temporal array to plot')
-        left_layout.addWidget(self.array_selector)
+        arr1_but.addWidget(self.array_selector)
         
         self.rlavr_spinbox = QSpinBox()
         self.rlavr_spinbox.setMinimum(0)
@@ -1406,17 +1455,32 @@ class TopWidget(QWidget):
         self.rlavr_spinbox.setToolTip('Sets running average Gauss kernel on the displayed data')
         self.rlavr_spinbox.setFixedWidth(90)
         self.rlavr_spinbox.setPrefix('Avr: ')
-        left_layout.addWidget(self.rlavr_spinbox)
+        arr1_but.addWidget(self.rlavr_spinbox)
         
-        self.range_to_all_button = QPushButton('Y range all')
+        self.range_to_all_button = QPushButton('Y fit all')
         self.range_to_all_button.setToolTip("Set range of Y axis to match all component's tarces.")
-        left_layout.addWidget(self.range_to_all_button)
-                
+        arr1_but.addWidget(self.range_to_all_button)
+        
+        arr1 = QHBoxLayout()
+        arr1.setContentsMargins(0, 4, 0, 4)
+        vline = QFrame()
+        vline.setFrameShape(QFrame.VLine)
+        vline.setFrameShadow(QFrame.Plain)
+        vline.setLineWidth(0)  # thinner line
+        vline.setStyleSheet("background-color: red;")
+        arr1.addWidget(vline)
+        arr1_but=QVBoxLayout()
+        #arr1_but.setContentsMargins(0, 0, 0, 0)
+        arr1_but.setSpacing(0)
+        arr1_but.setAlignment(Qt.AlignTop)
+        arr1.addLayout(arr1_but)
+        left_layout.addLayout(arr1)
+        
         self.array_selector2 = QComboBox()
         self.array_selector2.setFixedWidth(90)
         self.array_selector2.addItem('-')
         self.array_selector2.setToolTip('Select temporal array to plot on the right axis')
-        left_layout.addWidget(self.array_selector2)
+        arr1_but.addWidget(self.array_selector2)
         
         self.rlavr_spinbox2 = QSpinBox()
         self.rlavr_spinbox2.setMinimum(0)
@@ -1425,11 +1489,11 @@ class TopWidget(QWidget):
         self.rlavr_spinbox2.setToolTip('Sets running average Gauss kernel on the displayed data (right axis)')
         self.rlavr_spinbox2.setFixedWidth(90)
         self.rlavr_spinbox2.setPrefix('Avr: ')
-        left_layout.addWidget(self.rlavr_spinbox2)
+        arr1_but.addWidget(self.rlavr_spinbox2)
         
-        self.range_to_all_button2 = QPushButton('Y range all')
+        self.range_to_all_button2 = QPushButton('Y fit all')
         self.range_to_all_button2.setToolTip("Set range of Y axis to match all component's tarces.")
-        left_layout.addWidget(self.range_to_all_button2)
+        arr1_but.addWidget(self.range_to_all_button2)
         
         self.temporal_zoom_button = QPushButton('Zoom')
         self.temporal_zoom_button.setToolTip('Centers view on largest peak on C, with zoom corresponding to decay time')
@@ -2641,14 +2705,23 @@ class SpatialWidget(QWidget):
                 if index in self.mainwindow.cnm.estimates.idx_components:
                     return
         self.mainwindow.set_selected_component(index, 'spatial') 
-            
-if __name__ == '__main__':
+        
+
+def run_gui():
     app = QApplication(sys.argv)
     try:
-        app.setWindowIcon(QIcon(os.path.join(os.path.dirname(__file__), "pluvianus.ico")))
+        with importlib.resources.as_file(importlib.resources.files("pluvianus").joinpath("pluvianus.ico")) as icon_path:
+            app.setWindowIcon(QIcon(str(icon_path)))
     except Exception as e:
         print(f"Error setting window icon: {e}")
+
+    app.processEvents()
+    
     window = MainWindow()
     window.show()
+    app.processEvents()
+        
     sys.exit(app.exec())
-    
+
+if __name__ == "__main__":
+    run_gui()
