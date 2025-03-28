@@ -14,7 +14,6 @@ A feature-rich brosing, editing GUI for manual data verification and acceptance 
 
 ## Future plans
 ### 0
-* autorange of axes
 * exporting to mescroi
 * saving hdf5
 * keyboard shortcuts
@@ -23,18 +22,15 @@ A feature-rich brosing, editing GUI for manual data verification and acceptance 
 ### Next
 * step components sorted according to metrics
 * hover on spatial view
-* autorange on temporal curves considering all components
+* displaying all component's temporal curves together (gray), mouse click event on that to select component
 * optional ms and um display on axes
 * Movement correction of raw files from OnACID pipeline
 * Edit parameters of the compute menu options
-* toolbars resizable to smaller than their size to allow better splitter flexibility
 * beginner and advanced modes
-* ask for CaImAn dependencies 
 
 #### Expertiese wanted
-* Refactor scatterplot to get rid of plotly, get rid of resetting camera positions on update
 * support of 3D data
 * Packaging and distribution
 * Documentation
 * marketing in/to CaImAn community
-
+* ask for CaImAn dependencies - shold we optimize the environment?

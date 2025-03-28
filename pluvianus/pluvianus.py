@@ -4,12 +4,14 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog, QSizePolicy
 )
 from PySide6.QtGui import QAction, QColor
-from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtCore import QObject, Signal, Slot, Qt
-from PySide6.QtWebChannel import QWebChannel
 import pyqtgraph as pg
 
-import plotly.graph_objects as go
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.ticker import LogLocator, ScalarFormatter
+
 import json
 import os
 import tempfile
@@ -497,7 +499,7 @@ class MainWindow(QMainWindow):
             self.manual_acceptance_assigment_has_been_made=True
             self.file_changed=True
             self.update_title()
-            self.plot_parameters()
+            self.scatter_widget.update_scatterplot()
             self.set_selected_component(component, 'direct')
             self.scatter_widget.update_totals()
             self.scatter_widget.update_selected_component_on_scatterplot(self.selected_component)
@@ -785,12 +787,14 @@ class MainWindow(QMainWindow):
         self.temporal_widget.rlavr_spinbox2.setEnabled(self.cnm is not None)
         self.temporal_widget.time_slider.setRange(0, self.num_frames-1)
         self.temporal_widget.time_spinbox.setRange(0, self.num_frames-1)        
-        
+        self.temporal_widget.range_to_all_button2.setEnabled(self.cnm is not None)
+        self.temporal_widget.range_to_all_button.setEnabled(self.cnm is not None)       
+            
         if  self.cnm is None:
             self.temporal_widget.component_spinbox.setEnabled(False)
             self.update_title()
             self.temporal_widget.recreate_temporal_view()
-            self.plot_parameters()
+            self.scatter_widget.recreate_scatterplot()
             self.scatter_widget.update_totals()
             self.update_title()
             self.scatter_widget.update_component_assignment_buttons()
@@ -801,7 +805,7 @@ class MainWindow(QMainWindow):
                 
         self.update_title()
         self.temporal_widget.recreate_temporal_view()
-        self.plot_parameters()
+        self.scatter_widget.recreate_scatterplot()
         self.set_selected_component(self.selected_component, 'direct')           
 
     def save_file(self):
@@ -1206,138 +1210,7 @@ class MainWindow(QMainWindow):
         progress_dialog.setValue(100)
         progress_dialog.setLabelText('Done.')
         progress_dialog.close()
-        
-    def plot_parameters(self):
-        if self.cnm is None or self.cnm.estimates.r_values is None:
-            fig = go.Figure()
-            fig.update_layout(annotations=[dict(
-                text='No evaluated components.\n Open data array to compute component metrics.',
-                xref='paper', yref='paper', x=0.5, y=0.5, showarrow=False
-            )])
-            html = fig.to_html(include_plotlyjs='cdn')
-            self.scatter_widget.parameters_view.setHtml(html)
-            return
-        
-        num_components = self.cnm.estimates.r_values.shape[0]
-        fig = go.Figure()
-        # Main scatter trace (trace 0)
-        if self.cnm.estimates.idx_components is not None:
-            color=np.zeros(num_components)
-            color[self.cnm.estimates.idx_components] = 1
-            colorscale = ['red', 'green']  
-        else:
-            color = np.arange(num_components)
-            colorscale = 'viridis'
-        
-        x = self.cnm.estimates.cnn_preds
-        y = self.cnm.estimates.r_values
-        z = self.cnm.estimates.SNR_comp
-        fig.add_trace(go.Scatter3d(
-            x = x,
-            y = y,
-            z = z,
-            mode = 'markers',
-            marker = dict(
-                size = 3,
-                color = color,
-                colorscale = colorscale,
-                opacity = 0.5
-            ),
-            text = [str(i) for i in range(num_components)],
-            hovertemplate = '<br>'.join([
-                'Index: %{text}',
-            #    'CNN prediction: %{x:.2f}',
-            #    'R value: %{y:.2f}',
-            #    'SNR: %{z:.2f}'
-            ]) + '<extra></extra>'
-        ))
-        
-        # Selected point trace (trace 1)
-        selected_index = self.selected_component if self.selected_component is not None else 0
-        fig.add_trace(go.Scatter3d(
-            x = [self.cnm.estimates.cnn_preds[selected_index]],
-            y = [self.cnm.estimates.r_values[selected_index]],
-            z = [self.cnm.estimates.SNR_comp[selected_index]],
-            mode = 'markers',
-            marker = dict(
-                size = 6,
-                color = 'magenta',
-                opacity = 0.7
-            ),
-            name = 'Selected Point',
-            hoverinfo = 'skip'
-        ))
-        
-        # Add gridlines for the selected point                  
-        if self.cnm.estimates.idx_components is not None:
-            lines=self.scatter_widget.construct_threshold_gridline_data()
-            for name, line in lines.items():
-                fig.add_trace(go.Scatter3d(
-                        x = line['x'],
-                        y = line['y'],
-                        z = line['z'],
-                        mode = 'lines',
-                        line = dict(color = line['color'], width = 1, dash = 'dash'),
-                        name = name, 
-                        hoverinfo='skip'
-                ))
-        
-        fig.update_layout(scene=dict(
-            xaxis_title='CNN prediction',
-            yaxis_title='R value',
-            zaxis=dict(type='log'),
-            zaxis_title='SNR'
-        ))
-        fig.update_layout(hovermode='closest', hoverdistance=22, margin=dict(l=1, r=1, t=10, b=1), showlegend=False)
   
-        html = fig.to_html(include_plotlyjs='cdn')
-        html += '''
-        <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-        <script>
-        if (!window._qtcInitialized) {
-            window._qtcInitialized = true;
-            new QWebChannel(qt.webChannelTransport, function(channel) {
-                window.bridge = channel.objects.pythonBridge;
-                var plot = document.getElementsByClassName('plotly-graph-div')[0];
-                plot.on('plotly_click', function(data) {
-                    if (data.points.length > 0) {
-                        var pointIndex = data.points[0].text;
-                        bridge.pointClicked(pointIndex);
-                    }
-                });
-                // Global function to update the selected trace using direct coordinates
-                window.updateSelectedTrace = function(newX, newY, newZ, rgb) {
-                    console.log("JS: Updating selected trace with coordinates: " + newX + ", " + newY + ", " + newZ + " and color: " + rgb);
-                    Plotly.restyle(plot, {
-                        x: [[newX]],
-                        y: [[newY]],
-                        z: [[newZ]],
-                        marker: { color: rgb } 
-                    }, [1]);
-                };
-                // ---  updateThresholdLines global function ---
-                window.updateThresholdLines = function(linesJson) {
-                    var linesObj = JSON.parse(linesJson);
-                    console.log("JS: Updating threshold lines", linesObj);
-                    // Assume threshold line traces start at index 2
-                    var traceIndex = 2;
-                    for (var key in linesObj) {
-                        var line = linesObj[key];
-                        Plotly.restyle(plot, {
-                            x: [[].concat(line.x)],
-                            y: [[].concat(line.y)],
-                            z: [[].concat(line.z)],
-                            line: { color: line.color, width: 1, dash: 'dash' }
-                        }, [traceIndex]);
-                        traceIndex++;
-                    }
-                };
-            });
-        }
-        </script>
-        '''
-        self.scatter_widget.parameters_view.setHtml(html)
-        
     def perform_temporal_zoom(self):
         cnme=self.cnm.estimates
         component_index=self.selected_component
@@ -1440,6 +1313,10 @@ class TopWidget(QWidget):
         self.rlavr_spinbox.setPrefix('Avr: ')
         left_layout.addWidget(self.rlavr_spinbox)
         
+        self.range_to_all_button = QPushButton('Y range all')
+        self.range_to_all_button.setToolTip("Set range of Y axis to match all component's tarces.")
+        left_layout.addWidget(self.range_to_all_button)
+                
         self.array_selector2 = QComboBox()
         self.array_selector2.setFixedWidth(90)
         self.array_selector2.addItem('-')
@@ -1455,6 +1332,10 @@ class TopWidget(QWidget):
         self.rlavr_spinbox2.setPrefix('Avr: ')
         left_layout.addWidget(self.rlavr_spinbox2)
         
+        self.range_to_all_button2 = QPushButton('Y range all')
+        self.range_to_all_button2.setToolTip("Set range of Y axis to match all component's tarces.")
+        left_layout.addWidget(self.range_to_all_button2)
+        
         self.temporal_zoom_button = QPushButton('Zoom')
         self.temporal_zoom_button.setToolTip('Centers view on largest peak on C, with zoom corresponding to decay time')
         left_layout.addWidget(self.temporal_zoom_button)
@@ -1462,6 +1343,7 @@ class TopWidget(QWidget):
         self.temporal_zoom_auto_checkbox.setStyleSheet('margin-left: 8px;')   
         self.temporal_zoom_auto_checkbox.setToolTip('Centers view on largest peak on C, with zoom corresponding to decay time')
         left_layout.addWidget(self.temporal_zoom_auto_checkbox)
+        
         head_label=QLabel('Metrics:')
         head_label.setStyleSheet('font-weight: bold; margin-top: 10px;')
         left_layout.addWidget(head_label)
@@ -1530,7 +1412,31 @@ class TopWidget(QWidget):
         self.array_selector2.currentTextChanged.connect(self.on_array_selector_changed)  
         self.temporal_zoom_button.clicked.connect(self.on_temporal_zoom)
         self.temporal_zoom_auto_checkbox.stateChanged.connect(self.on_temporal_zoom_auto_changed)
-    
+        self.range_to_all_button.clicked.connect(lambda: self.on_range_to_all_clicked(right_axis=False))
+        self.range_to_all_button2.clicked.connect(lambda: self.on_range_to_all_clicked(right_axis=True))
+
+    def on_range_to_all_clicked(self, right_axis):
+        #sets left or right axis range to match all component's traces
+        if right_axis:
+            array_text=self.array_selector2.currentText()
+            avr=self.rlavr_spinbox2.value()
+            if array_text=='-':
+                return
+        else:
+            array_text=self.array_selector.currentText()
+            avr=self.rlavr_spinbox.value()
+        ymin=np.inf
+        ymax=-np.inf
+        for index in range(self.mainwindow.numcomps):
+            y, _ =self._get_trace(index, array_text, avr)
+            ymin=min(ymin, np.min(y))
+            ymax=max(ymax, np.max(y))
+        if right_axis:
+            self.temporal_view.RightViewBox.setRange(yRange= (ymin, ymax), padding=0.0)
+        else:
+            self.temporal_view.getViewBox().setRange(yRange= (ymin, ymax), padding=0.0)
+        
+        
     def on_time_widget_changed(self, value, source):
         #print(f'{inspect.stack()[1][3]} called with value {value}{source}')
         self.mainwindow.set_selected_frame(value)
@@ -1618,7 +1524,8 @@ class TopWidget(QWidget):
             combo.setCurrentIndex(0)
         #print(f'Update_array_selector: right:{right_axis}, prev:{previous_selected_array}, curr:{combo.currentText()}, Selectable array names:', selectable_array_names)
         combo.setEnabled(True) 
-        combo.blockSignals(False)
+        combo.blockSignals(False)      
+        
     
     def recreate_temporal_view(self):
         #.update_all esetén
@@ -1628,6 +1535,7 @@ class TopWidget(QWidget):
         #self.temporal_zoom_auto_checkbox.setChecked(False)
         
         self.temporal_view.clear()
+        self.temporal_view.RightViewBox.clear()
         
         if self.mainwindow.cnm is None:
             text='No data loaded yet.\nOpen CaImAn HDF5 file using the file menu.'
@@ -1645,34 +1553,31 @@ class TopWidget(QWidget):
         self.temporal_view.getPlotItem().showGrid(x=True, y=True, alpha=0.3)
         self.temporal_view.getPlotItem().showAxes(True, showValues=(True, False, False, True))
         self.temporal_view.getPlotItem().setContentsMargins(0, 0, 10, 0)  # add margin to the right
-  
-        self.mainwindow.scatter_widget.update_totals()
         
         self.temporal_line1=self.temporal_view.plot(x=[0,self.mainwindow.num_frames-1 ], y=[0,0], pen=pg.mkPen('r', width=1), name='component')
         self.temporal_line2 = pg.PlotCurveItem(x=[0,self.mainwindow.num_frames-1 ], y=[0,0], pen=pg.mkPen('g', width=1), name='component2')
         self.temporal_view.RightViewBox.addItem(self.temporal_line2)
-    
         
         self.temporal_marker_P = pg.InfiniteLine(pos=2, angle=90, movable=False, pen=pg.mkPen('darkgrey', width=2))
         self.temporal_view.addItem(self.temporal_marker_P)
         self.temporal_marker_N = pg.InfiniteLine(pos=2, angle=90, movable=False, pen=pg.mkPen('darkgrey', width=2))
         self.temporal_view.addItem(self.temporal_marker_N)
-        self.temporal_marker = pg.InfiniteLine(pos=2, angle=90, movable=True, pen=pg.mkPen('r', width=2), hoverPen=pg.mkPen('m', width=4))
+        self.temporal_marker = pg.InfiniteLine(pos=2, angle=90, movable=True, pen=pg.mkPen('m', width=2), hoverPen=pg.mkPen('m', width=4))
         self.temporal_view.addItem(self.temporal_marker)
-        self.temporal_marker.sigPositionChangeFinished.connect(lambda line=self.temporal_marker: line.setPen(pg.mkPen('r', width=2)))
+        self.temporal_marker.sigPositionChangeFinished.connect(lambda line=self.temporal_marker: line.setPen(pg.mkPen('m', width=2)))
         self.temporal_marker.sigDragged.connect(self.on_temporal_marker_dragged)
         self.temporal_view.sceneObj.sigMouseClicked.connect(self.on_mouseClickEvent)
         self.temporal_view.getPlotItem().sigXRangeChanged.connect(self.on_range_changed)
         self.temporal_view.setLabel('bottom', 'Frame Number')
+        
+        self.mainwindow.scatter_widget.update_totals()
         self.update_temporal_view()
 
-    def update_temporal_view(self):
-                
-        def _get_trace(self, index, array_text, rlavr_width):    
+    def _get_trace(self, index, array_text, rlavr_width):    
             if array_text == 'C':
                 ctitle=f'Temporal Component ({index})'
             elif array_text == 'F_dff':
-                ctitle=f'\u0394F/F ({index})'
+                ctitle=f'detrended \u0394F/F ({index})'
             elif array_text == 'YrA':
                 ctitle=f'Residual ({index})'
             elif array_text == 'S':
@@ -1700,6 +1605,8 @@ class TopWidget(QWidget):
                 y = np.convolve(y, kernel, mode='same')
             return y, ctitle
         
+    def update_temporal_view(self):
+                        
         tooltips={'C': 'Temporal traces', 
             'F_dff': '\u0394F/F normalized activity trace', 
             'S': 'Deconvolved neural activity trace', 
@@ -1718,22 +1625,26 @@ class TopWidget(QWidget):
         array_text2=self.array_selector2.currentText()
         self.array_selector2.setToolTip(tooltips[array_text2] + ' (right axis)') 
 
-        y, ctitle=_get_trace(self, index, array_text, self.rlavr_spinbox.value())
+        y, ctitle=self._get_trace( index, array_text, self.rlavr_spinbox.value())
         self.temporal_view.setLabel('left', f'{array_text} value')       
         self.temporal_line1.setData(x=np.arange(len(y)), y=y, pen=pg.mkPen(color='b', width=2), name=f'data {array_text} {index}')
         if array_text2 != '-':
-            y2, ctitle2=_get_trace(self, index, array_text2, self.rlavr_spinbox2.value())
+            y2, ctitle2=self._get_trace( index, array_text2, self.rlavr_spinbox2.value())
             self.temporal_line2.setData(x=np.arange(len(y2)), y=y2, pen=pg.mkPen(color='r', width=2), name=f'data(2) {array_text2} {index}')
             self.temporal_line2.setVisible(True)
             self.temporal_view.getPlotItem().setTitle(ctitle + ' - ' + ctitle2)
             self.temporal_view.setLabel('right', f'{array_text2} value')
             self.temporal_view.getAxis('right').setStyle(showValues=True)
+            self.range_to_all_button2.setEnabled(True)
+            self.rlavr_spinbox2.setEnabled(True) 
         else:
             self.temporal_view.getPlotItem().setTitle(ctitle)
             self.temporal_view.getAxis('right').setStyle(showValues=False)
             self.temporal_line2.setVisible(False)
             self.temporal_view.getAxis('right').setLabel('')
-            
+            self.range_to_all_button2.setEnabled(False)
+            self.rlavr_spinbox2.setEnabled(False) 
+        
         cnme=self.mainwindow.cnm.estimates
         if not cnme.r_values is None:
             r = cnme.r_values[index]
@@ -1786,6 +1697,7 @@ class TopWidget(QWidget):
             scenepos=event.scenePos()
             axpos= self.temporal_view.getViewBox().mapSceneToView(scenepos)
             self.mainwindow.set_selected_frame(int(axpos.x()))
+            print('setting to: ',int(axpos.x()), '  got:', self.mainwindow.selected_frame)
         
     def on_range_changed(self, viewbox, ev):
         #interacting with axis ranges sets the selected frame to the center
@@ -1928,19 +1840,15 @@ class ScatterWidget(QWidget):
         # Set scroll content as scroll area widget
         scroll_area.setWidget(scroll_content)
         my_layout.addWidget(scroll_area)
+
         
-        
-        self.parameters_view = QWebEngineView()
-        self.parameters_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.parameters_view.setContextMenuPolicy(Qt.NoContextMenu)
-        my_layout.addWidget(self.parameters_view )
+        # --- Right panel: Matplotlib canvas for scatter plot ---
+        self.plt_figure = Figure()
+        self.plt_canvas = FigureCanvasQTAgg(self.plt_figure)
+        self.plt_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        my_layout.addWidget(self.plt_canvas)
+         
         self.setLayout(my_layout)
-        
-        # Create a Python bridge and web channel for JS communication
-        self.bridge = PythonBridge(self)
-        self.channel = QWebChannel()
-        self.channel.registerObject('pythonBridge', self.bridge)
-        self.parameters_view.page().setWebChannel(self.channel)
         
         self.selected_component_on_scatter = -1
         
@@ -2039,6 +1947,7 @@ class ScatterWidget(QWidget):
         self.bad_toggle_button.blockSignals(False)
         self.good_toggle_button.blockSignals(False)
         
+        
     def on_threshold_spinbox_changed(self, value):
         cnm=self.mainwindow.cnm
         if cnm.estimates.idx_components is None:
@@ -2053,16 +1962,129 @@ class ScatterWidget(QWidget):
         self.mainwindow.on_threshold_spinbox_changed() 
         self.update_threshold_lines_on_scatterplot()
   
-    def on_scatter_point_clicked(self, index):
-        #print(f'Point clicked: {index}', end='')
-        if self.selected_component_on_scatter == index:
-            #print(' (same as before)')
-            return
-        self.selected_component_on_scatter = index
-        #print(f' (new value: {index})')
+    def on_scatter_point_clicked(self, event):
+        index=event.ind[0]
+        #print(f'Point clicked: {index}')
         self.mainwindow.set_selected_component(index, 'scatter')
+
+    def on_scatter_hover(self, event):
+        setvis=False
+        if event.inaxes == self.plt_ax:
+            cont, ind = self.plt_scatter.contains(event)
+            if cont:
+                index=ind["ind"][0]
+                text=f"Component {index}"
+                cnme=self.mainwindow.cnm.estimates
+                if cnme.r_values is not None:
+                    text+=f'\nRval={cnme.r_values[index]:.2f}'
+                if cnme.SNR_comp is not None:
+                    text+=f'\nSNR={cnme.SNR_comp[index]:.2f}'
+                if cnme.cnn_preds is not None:
+                    text+=f'\nCNN={cnme.cnn_preds[index]:.2f}'
+                if cnme.idx_components is not None:
+                    text+=f'\n{"Good" if index in cnme.idx_components else "Bad"}'
+                self.plt_annot.set_text(text)
+                self.plt_annot.set_visible(True)
+                self.plt_canvas.draw_idle()
+                setvis=True
+        if not setvis and self.plt_annot.get_visible():
+            self.plt_annot.set_visible(False)
+            self.plt_canvas.draw_idle()
+        
+        
+    def recreate_scatterplot(self):
+        if self.mainwindow.cnm is None or self.mainwindow.cnm.estimates.r_values is None:
+            text='No evaluated components.Open data array to compute component metrics.'
+            self.plt_ax = self.plt_figure.add_subplot(111)
+            self.plt_ax.text(0.5, 0.5, text, transform=self.plt_ax.transAxes, ha='center', va='center', size=7.8, color='k')
+            self.plt_figure.patch.set_facecolor((200.0/255, 200.0/255, 210.0/255, 127.0/255))
+            self.plt_ax.axis('off')
+            return
     
-    
+        plt.rcParams.update({
+                'font.size': 10,           # default text size
+                'axes.labelsize': 8,      # axis label size
+                'axes.titlesize': 8,      # title size
+                'xtick.labelsize': 8,      # x-axis tick label size
+                'ytick.labelsize': 8,      # y-axis tick label size
+                'legend.fontsize': 8,      # legend font size
+                'figure.titlesize': 8,    # figure title size
+                'axes.labelpad': 4,        # space between label and axis
+                'xtick.major.size': 4,     # length of major ticks
+                'ytick.major.size': 4,
+                'xtick.minor.size': 2,     # length of minor ticks
+                'ytick.minor.size': 2,
+            })
+        plt.rcParams.update({
+                'figure.subplot.left': 0.05,   # adjust left margin (default is around 0.125)
+                'figure.subplot.right': 0.95,  # adjust right margin (default is around 0.9)
+                'figure.subplot.bottom': 0.05, # adjust bottom margin (default is around 0.1)
+                'figure.subplot.top': 0.95,    # adjust top margin (default is around 0.88)
+            })
+        self.plt_figure.tight_layout()
+        # Clear the figure, removing all subplots
+        self.plt_figure.clf()
+        self.plt_figure.patch.set_facecolor('w')
+        self.plt_ax = self.plt_figure.add_subplot(111, projection='3d')
+        
+        #self.plt_ax.set_title("Component Metrics Scatter Plot")
+        
+        self.plt_ax.zaxis.set_major_formatter(plt.FuncFormatter(lambda val, pos=None: "{:.0f}".format(round(10**val)) if val >= 1 else "{:.1g}".format(10**val)))
+        
+        stubs = np.array([1,2,3,4,5])
+        allstubs = np.concatenate([stubs * 10 ** m for m in np.arange(-5.0, 6.0, dtype=float)])
+        self.plt_ax.zaxis.set_major_locator(plt.FixedLocator(np.log10(allstubs)))
+        
+        stubs = np.array([1,2,3,4,5,6,7,8,9])
+        allstubs = np.concatenate([stubs * 10 ** m for m in np.arange(-5.0, 6.0, dtype=float)])
+        self.plt_ax.zaxis.set_minor_locator(plt.FixedLocator(np.log10(allstubs)))
+        
+        self.plt_ax.set_box_aspect((1,1,1),  zoom=1.1)
+        
+        self.plt_canvas.mpl_connect("motion_notify_event", self.on_scatter_hover)
+        self.plt_canvas.mpl_connect("pick_event", self.on_scatter_point_clicked)
+        
+        self.update_scatterplot()
+        
+    def update_scatterplot(self):
+        self.plt_ax.cla()
+        self.plt_ax.set_xlabel("CNN prediction")
+        self.plt_ax.set_ylabel("R value")
+        self.plt_ax.set_zlabel("SNR")
+        num_components = self.mainwindow.numcomps
+        cnme=self.mainwindow.cnm.estimates
+        if cnme.idx_components is not None:
+            colors = ['green' if i in cnme.idx_components else 'red' for i in range(num_components)]
+        else:
+            colors = plt.cm.viridis(np.linspace(0, 1, num_components))
+        x = cnme.cnn_preds
+        y = cnme.r_values
+        z = np.log10(cnme.SNR_comp)
+        self.plt_scatter = self.plt_ax.scatter(x, y, z, c=colors, s=10, alpha=0.5, picker=5)
+            
+        #self.plt_figure.colorbar(self.scatter, ax=self.ax, shrink=0.5)
+
+        self.plt_annot = self.plt_ax.text2D(0.00, 1.00, "", transform=self.plt_ax.transAxes, va='top', ha='left')
+        self.plt_annot.set_fontsize(8)
+        self.plt_annot.set_visible(False)
+        
+        self.plt_selected_scatterpoint = self.plt_ax.scatter(1,2, 3, marker='o', c='magenta', s=20, alpha=1)
+        self.update_selected_component_on_scatterplot(self.mainwindow.selected_component)
+        
+        self.threshold_lines = {}
+        if cnme.idx_components is not None:
+            lines = self.construct_threshold_gridline_data()
+            for name, line in lines.items():
+                ln, = self.plt_ax.plot(1, 1, 1, linestyle='dashed',
+                                    color=line['color'], linewidth=1, label=name)
+                self.threshold_lines[name]=ln
+
+            self.update_threshold_lines_on_scatterplot()
+            
+        self.plt_ax.set_zlim(bottom=np.min(z), top=np.max(z))
+        self.plt_canvas.draw()
+
+        
     def construct_threshold_gridline_data(self):
         cnm=self.mainwindow.cnm
         if cnm is None:
@@ -2083,29 +2105,31 @@ class ScatterWidget(QWidget):
     def update_threshold_lines_on_scatterplot(self):
         if self.mainwindow.cnm.estimates.idx_components is None:
             return
-        lines=self.construct_threshold_gridline_data() 
-        lines_json = json.dumps(lines)
-        # Build the JS command calling updateThresholdLines, ensuring proper quoting
-        js_cmd = f'window.updateThresholdLines({json.dumps(lines_json)});'
-        #print(f'Calling JS for threshold lines: {js_cmd}')
-        self.parameters_view.page().runJavaScript(js_cmd)
-        
+        lines = self.construct_threshold_gridline_data()
+        for name, lineobj in self.threshold_lines.items():
+            line=lines[name]
+            lineobj.set_data(line['x'], line['y'])
+            lineobj.set_3d_properties(np.log10(line['z']))
+            lineobj.set_color(line['color'])
+        self.plt_canvas.draw()
+               
     def update_selected_component_on_scatterplot(self, index):
         cnm=self.mainwindow.cnm
         if cnm is None or cnm.estimates.r_values is None:
             return
-        # Compute 3D coordinates and pass them directly as floats
         #print(f'Updating selected component on scatter plot: {index}')
         x_val = float(cnm.estimates.cnn_preds[index])
         y_val = float(cnm.estimates.r_values[index])
-        z_val = float(cnm.estimates.SNR_comp[index])
+        z_val = np.log10(float(cnm.estimates.SNR_comp[index]))
         if index in cnm.estimates.idx_components:
             color = 'green'
         else:
-            color = 'magenta'
-        js_cmd = f'window.updateSelectedTrace({x_val}, {y_val}, {z_val}, "{color}");'
-        #print(f'Calling JS: {js_cmd}')
-        self.parameters_view.page().runJavaScript(js_cmd)
+            color = 'magenta'     
+        
+        self.plt_selected_scatterpoint._offsets3d = ([x_val], [y_val], [z_val])
+        self.plt_selected_scatterpoint.set_color(color)
+        self.plt_canvas.draw()
+        #print(f'Updating selected component on scatter plot: {index}')
         
     def update_totals(self):
         cnm=self.mainwindow.cnm
@@ -2127,17 +2151,7 @@ class ScatterWidget(QWidget):
             self.good_label.setEnabled(False)
             self.bad_label.setText('    Bad: --')
             self.bad_label.setEnabled(False)   
-        
-class PythonBridge(QObject):
-    def __init__(self, parent=None):
-        super().__init__(parent)
 
-    @Slot(str)
-    def pointClicked(self, index):
-        parent = self.parent()
-        if parent and index != '':
-            parent.on_scatter_point_clicked(int(index))
-            
 
 class SpatialWidget(QWidget):
     def __init__(self, main_window: MainWindow, parent=None):
@@ -2472,12 +2486,10 @@ class SpatialWidget(QWidget):
             image_data = res.reshape(self.mainwindow.dims)
         elif array_text == 'Residuals':
             res=self.mainwindow.data_array[:,tmin:tmax]
-            res=np.mean(res, axis=1)
             rcm=np.dot(self.mainwindow.cnm.estimates.A[:, :] , self.mainwindow.cnm.estimates.C[:, tmin:tmax])
-            rcm=np.mean(rcm, axis=1)
             rcb=np.dot(self.mainwindow.cnm.estimates.b[:, :] , self.mainwindow.cnm.estimates.f[:, tmin:tmax])
-            rcb=np.mean(rcb, axis=1)
             res=res-rcm-rcb
+            res=np.mean(res, axis=1)
             image_data = res.reshape(self.mainwindow.dims)
         elif array_text[0] == 'B':
             try:
