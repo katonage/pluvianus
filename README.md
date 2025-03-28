@@ -13,12 +13,10 @@ A feature-rich brosing, editing GUI for manual data verification and acceptance 
 * TBD
 
 ## Future plans
-### 0
-* exporting to mescroi
-* keyboard shortcuts
-* test exported npz files
+
 
 ### Next
+*check mesroi export with correct pixel sizes
 * step components sorted according to metrics
 * hover on spatial view
 * displaying all component's temporal curves together (gray), mouse click event on that to select component

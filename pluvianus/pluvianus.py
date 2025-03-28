@@ -17,6 +17,7 @@ import os
 import tempfile
 import numpy as np
 import glob
+import uuid
 
 import pynapple as nap
 from scipy.signal.windows import gaussian
@@ -282,7 +283,7 @@ class MainWindow(QMainWindow):
         self.save_trace_action_f_a_n = QAction('\u0394F/F to Pynapple NPZ (All)...', self)
         exp_menu.addAction(self.save_trace_action_f_a_n)
         exp_menu.addSeparator()
-        self.save_mescroi_action = QAction('Contours to MEScROI...', self)
+        self.save_mescroi_action = QAction('Contours to MEScROI (Good)...', self)
         exp_menu.addAction(self.save_mescroi_action)
         
         help_menu = self.menuBar().addMenu('Help')
@@ -985,7 +986,8 @@ class MainWindow(QMainWindow):
         else:
             raise Exception('Unknown filetype: ' + filetype)
          
-    def save_MEScROI(self, filtering='Good'):
+    def save_MEScROI(self, _, filtering='Good'):
+        #inspired from  Kata5/FemtoOnAcid
         cnme=self.cnm.estimates
         if filtering == 'All':
             idx=range(self.numcomps)
@@ -1000,19 +1002,60 @@ class MainWindow(QMainWindow):
             return
         
         suggestion=os.path.join(os.path.dirname(self.hdf5_file), 'selection_' + filtering + '.MEScROI')
-        data_filep, _ = QFileDialog.getSaveFileName(self, 'Save ' + filtering.lower() + ' component contours', suggestion, 'MEScROI files (*.mescroi);;')
-        if not data_filep: #overwrite confirmation has been made
+        mescroi_name, _ = QFileDialog.getSaveFileName(self, 'Save ' + filtering.lower() + ' component contours', suggestion, 'MEScROI files (*.mescroi);;')
+        if not mescroi_name: #overwrite confirmation has been made
             return
-        data=data[idx, :]
-        time=np.arange(data.shape[1])/self.framerate #sec
-        self.component_contour_coords 
         
-        #todo
-        print('todo')
-        #output_data.save(str(data_filep))
-        #print(data_filep + ' saved.')
-   
+        contours = [self.component_contour_coords[int(i)] for i in idx]
+        layer_index = 0
+
+            
+        def pixel_coords_to_local(pixel_coords, size_x, size_y, pixel_size_x, pixel_size_y):
+            # converts the array indices used by CaImAn (measured in pixels)
+            # to local coordinates used by MESc GUI (usually measured in micrometers)
+            # CaImAn (and OpenCV) use a coordinate system where the origin is the upper left corner and the y coordinate points downwards
+            # MESc GUI uses a coordinate system where the origin is in the center and the y coordinate points upwards
+            local_x = (pixel_coords[0] - (size_x / 2)) * pixel_size_x
+            local_y = (-1) * (pixel_coords[1] - (size_y / 2)) * pixel_size_y
+            return np.array([ local_x, local_y])
+
+        rng = np.random.default_rng(12345)
+        mescroi_data = {"rois": []}
         
+        for roi_index, contour in enumerate(contours):
+            # lighter colours are more visible in the MESc GUI
+            r = 128 + int(rng.integers(128))
+            g = 128 + int(rng.integers(128))
+            b = 128 + int(rng.integers(128))
+            
+            roi_data = {
+                "color": "#ff%02x%02x%02x" % (r, g, b),
+                "firstZPlane": layer_index,
+                "label": str(roi_index + 1),
+                "lastZPlane": layer_index,
+                "role": "standard",
+                "type": "polygonXY",
+                "uniqueID": ("{" + str(uuid.uuid4()) + "}"),
+                "vertices": [],
+                }
+            
+            # the component might be non-contiguous, which means the contour may be multiple disconnected loops
+            # for each region (thus, contour loop) the coordinates array contains a block of points, delimited by NaNs. the first and last rows are also NaNs.
+            # here, we just need to filter out the NaNs
+            contour=contour.copy()
+            for point in contour:
+                if not np.any(np.isnan(point)):
+                    point[0], point[1] = point[1], point[0] #Transpose
+                    local_coords = pixel_coords_to_local(point, self.dims[0], self.dims[1], self.pixel_size[0], self.pixel_size[1])
+                    roi_data["vertices"].append(local_coords.tolist())
+            
+            mescroi_data["rois"].append(roi_data)
+        
+        with open(mescroi_name, "w") as f:
+            f.write(json.dumps(mescroi_data, indent=4))
+
+    
+    
     def on_compute_evaluate_components_action(self):
         if self.data_array is None:
             return
@@ -2306,6 +2349,8 @@ class SpatialWidget(QWidget):
         plot_item.showAxes(True, showValues=(True, False, False, True))
         plot_item.showGrid(x=False, y=False)
         plot_item.setMenuEnabled(False)
+        plot_item.invertY(True)
+        
 
         if self.mainwindow.data_array is None: 
             self.data_info_label.setText(f'Open data array in file menu to enable more options...')
