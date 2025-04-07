@@ -23,7 +23,6 @@ call:
 
 
 ### Next
-* check mesroi export with correct pixel sizes
 * step components sorted according to metrics
 * hover on spatial view
 * displaying all component's temporal curves together (gray), mouse click event on that to select component

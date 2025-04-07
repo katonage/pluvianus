@@ -1574,6 +1574,9 @@ class TopWidget(QWidget):
         self.range_to_all_button.clicked.connect(lambda: self.on_range_to_all_clicked(right_axis=False))
         self.range_to_all_button2.clicked.connect(lambda: self.on_range_to_all_clicked(right_axis=True))
 
+        self.temporal_view.sceneObj.sigMouseClicked.connect(self.on_mouseClickEvent)
+        self.temporal_view.getPlotItem().sigXRangeChanged.connect(self.on_range_changed)
+
     def on_range_to_all_clicked(self, right_axis):
         #sets left or right axis range to match all component's traces
         if right_axis:
@@ -1725,8 +1728,7 @@ class TopWidget(QWidget):
         self.temporal_view.addItem(self.temporal_marker)
         self.temporal_marker.sigPositionChangeFinished.connect(lambda line=self.temporal_marker: line.setPen(pg.mkPen('m', width=2)))
         self.temporal_marker.sigDragged.connect(self.on_temporal_marker_dragged)
-        self.temporal_view.sceneObj.sigMouseClicked.connect(self.on_mouseClickEvent)
-        self.temporal_view.getPlotItem().sigXRangeChanged.connect(self.on_range_changed)
+
         self.temporal_view.setLabel('bottom', 'Frame Number')
         
         self.mainwindow.scatter_widget.update_totals()
@@ -1854,9 +1856,10 @@ class TopWidget(QWidget):
         event.accept()
         if event.double():
             scenepos=event.scenePos()
+            #print(repr(event))
             axpos= self.temporal_view.getViewBox().mapSceneToView(scenepos)
             self.mainwindow.set_selected_frame(int(axpos.x()))
-            print('setting to: ',int(axpos.x()), '  got:', self.mainwindow.selected_frame)
+            #print('mouseClickEvent setting to: ',int(axpos.x()), '  got:', self.mainwindow.selected_frame)
         
     def on_range_changed(self, viewbox, ev):
         #interacting with axis ranges sets the selected frame to the center
@@ -2520,7 +2523,11 @@ class SpatialWidget(QWidget):
         if self.mainwindow.data_array is not None:
             possible_array_text.append('Data')
             possible_array_text.append('Residuals')
+            if self.mainwindow.cnm.estimates.idx_components is not None:
+                possible_array_text.append('Residuals (Good)')            
         possible_array_text.append('RCM')
+        if self.mainwindow.cnm.estimates.idx_components is not None:
+            possible_array_text.append('RCM (Good)')            
         possible_array_text.append('RCB')
         numbackround=cnme.b.shape[-1]
         for i in range(numbackround):
@@ -2556,10 +2563,14 @@ class SpatialWidget(QWidget):
             ctitle=f'Original data (movie)'
         elif array_text == 'RCM':
             ctitle=f'Reconstructed movie (A ⊗ C) (movie)'
+        elif array_text == 'RCM (Good)':
+            ctitle=f'Reconstructed movie (A ⊗ C) using good components (movie)'
         elif array_text == 'RCB':
             ctitle=f'Reconstructed background (b ⊗ f) (movie)'
         elif array_text == 'Residuals':
             ctitle=f'Residuals (Y - (A ⊗ C) - (b ⊗ f)) (movie)'
+        elif array_text == 'Residuals (Good)':
+            ctitle=f'Residuals (Y - (A ⊗ C) - (b ⊗ f)) using good components (movie)'
         elif array_text[0] == 'B':
             ctitle=f'Background component {int(array_text[1:])}'
         elif array_text == 'Cn':
@@ -2661,6 +2672,10 @@ class SpatialWidget(QWidget):
             res=np.dot(self.mainwindow.A_array[:, :] , self.mainwindow.cnm.estimates.C[:, tmin:tmax])
             res=np.mean(res, axis=1)
             image_data = res.reshape(self.mainwindow.dims)
+        elif array_text == 'RCM (Good)':
+            res=np.dot(self.mainwindow.A_array[:, self.mainwindow.cnm.estimates.idx_components] , self.mainwindow.cnm.estimates.C[self.mainwindow.cnm.estimates.idx_components, tmin:tmax])
+            res=np.mean(res, axis=1)
+            image_data = res.reshape(self.mainwindow.dims)
         elif array_text == 'RCB':
             res=np.dot(self.mainwindow.cnm.estimates.b[:, :] , self.mainwindow.cnm.estimates.f[:, tmin:tmax])
             res=np.mean(res, axis=1)
@@ -2668,6 +2683,13 @@ class SpatialWidget(QWidget):
         elif array_text == 'Residuals':
             res=self.mainwindow.data_array[:,tmin:tmax]
             rcm=np.dot(self.mainwindow.A_array[:, :] , self.mainwindow.cnm.estimates.C[:, tmin:tmax])
+            rcb=np.dot(self.mainwindow.cnm.estimates.b[:, :] , self.mainwindow.cnm.estimates.f[:, tmin:tmax])
+            res=res-rcm-rcb
+            res=np.mean(res, axis=1)
+            image_data = res.reshape(self.mainwindow.dims)
+        elif array_text == 'Residuals (Good)':
+            res=self.mainwindow.data_array[:,tmin:tmax]
+            rcm=np.dot(self.mainwindow.A_array[:, self.mainwindow.cnm.estimates.idx_components] , self.mainwindow.cnm.estimates.C[self.mainwindow.cnm.estimates.idx_components, tmin:tmax])
             rcb=np.dot(self.mainwindow.cnm.estimates.b[:, :] , self.mainwindow.cnm.estimates.f[:, tmin:tmax])
             res=res-rcm-rcb
             res=np.mean(res, axis=1)
