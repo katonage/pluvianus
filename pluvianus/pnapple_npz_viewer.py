@@ -5,10 +5,32 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtWidgets
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QFileDialog
 import pynapple as nap
+import json
+import tempfile
 
 # Set pyqtgraph global configuration
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
+
+def save_state(mypath=None):
+    filename = 'pynapple_npz_viewer_state.json'
+    filename = os.path.join(tempfile.gettempdir(), filename)
+    state = {'path': mypath}
+    with open(filename, 'w') as f:
+        json.dump(state, f)
+    
+def load_state():
+    filename = 'pynapple_npz_viewer_state.json'
+    filename = os.path.join(tempfile.gettempdir(), filename)
+    if not os.path.exists(filename):
+        return ""
+    with open(filename, 'r') as f:
+        state = json.load(f)
+        if state['path'] is not None and os.path.exists(state['path']):
+            mypath = state['path']
+            return mypath
+        else:
+            return ""
 
 app = QtWidgets.QApplication(sys.argv)
 app.setApplicationName("Pynapple NPZ viewer")
@@ -32,7 +54,7 @@ colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
 data_files, _ = QFileDialog.getOpenFileNames(
     central_widget,
     'Open Pynapple NPZ containing Tsd or TsdFrame',
-    '',
+    load_state(),
     'NPZ files (*.npz)'
 )
 if not data_files:
@@ -62,7 +84,7 @@ for data_file in data_files:
         raise Exception("Unsupported format: {}".format(type(curve)))
     
    
-
+save_state(os.path.dirname(data_files[0]))
 win.setLabel('bottom', 'Time (s)')
 
 central_widget.show()

@@ -2,6 +2,8 @@
 <img src="https://github.com/katonage/pluvianus/blob/main/pluvianus%20image.png" width="400" align="right">
 A feature-rich brosing, editing GUI for manual data verification and acceptance of CaImAn results.
 
+"Seeing is believing..."
+
 ## Highlights
 * Standalone GUI
 * Interactive scatter plot of component metrics
