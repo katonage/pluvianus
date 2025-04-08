@@ -24,13 +24,10 @@ call:
 
 ### Next
 * step components sorted according to metrics
-* hover on spatial view
 * displaying all component's temporal curves together (gray), mouse click event on that to select component
-* optional ms and um display on axes
 * Movement correction of raw files from OnACID pipeline
 * Edit parameters of the compute menu options
 * command line calling with filename and datafile
-* beginner and advanced modes
 
 
 #### Expertiese wanted

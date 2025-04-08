@@ -23,6 +23,7 @@ import importlib
 
 import pynapple as nap
 from scipy.signal.windows import gaussian
+import cv2
 
 import inspect
 import time
@@ -150,6 +151,7 @@ class BackgroundWindow(QMainWindow):
             ax.setStyle(tickLength=10)         
         self.spatial_widget.getPlotItem().setMenuEnabled(False)
         self.spatial_widget.setDefaultPadding( 0.0 )
+        self.spatial_widget.getPlotItem().invertY(True)
         bottom_row.addWidget(self.spatial_widget)
         
         layout.addWidget(bottom_row)
@@ -272,6 +274,9 @@ class MainWindow(QMainWindow):
         comp_menu.addAction(self.compute_cn_action)
         self.compute_origtrace_action = QAction('Compute Original Fluorescence Traces', self)
         comp_menu.addAction(self.compute_origtrace_action)
+        self.compute_spatial_maximum_action = QAction('Compute Maximum of Displayed Movie (actual settings)', self)
+        comp_menu.addAction(self.compute_spatial_maximum_action)
+        
         
         view_menu = self.menuBar().addMenu('View')
         self.info_action = QAction('Info', self)
@@ -327,6 +332,7 @@ class MainWindow(QMainWindow):
         self.compute_projections_action.triggered.connect(self.on_compute_projections_action)
         self.compute_cn_action.triggered.connect(self.on_compute_cn_action)
         self.compute_origtrace_action.triggered.connect(self.on_compute_origtrace_action)
+        self.compute_spatial_maximum_action.triggered.connect(self.on_compute_spatial_maximum_image)
         self.opts_action.triggered.connect(self.on_opts_action)
         
         self.info_action.triggered.connect(self.on_info_action)
@@ -382,6 +388,9 @@ class MainWindow(QMainWindow):
         self.orig_trace_array = None # computed original fluorescence traces
         self.orig_trace_array_neuropil = None # computed original fluorescence traces' neuropil
         # correlation image is stored in the cnm object
+        self.spatial_maximum_image = None # temporal maximum image of the displayed image
+        self.spatial_maximum_image_idx = None # temporal maximum image time indexes
+        self.spatial_maximum_image_title = '' # temporal maximum image title
     
          
         # Update figure and state
@@ -841,6 +850,7 @@ class MainWindow(QMainWindow):
         self.compute_projections_action.setEnabled(self.data_array is not None)
         self.compute_cn_action.setEnabled(self.data_array is not None)
         self.compute_origtrace_action.setEnabled(self.data_array is not None)
+        self.compute_spatial_maximum_action.setEnabled(self.cnm is not None)
         self.save_trace_action_c_a_n.setEnabled(self.cnm is not None)
         self.save_trace_action_c_g_n.setEnabled(self.cnm is not None and self.cnm.estimates.idx_components is not None)
         self.save_trace_action_f_a_n.setEnabled(self.cnm is not None and self.cnm.estimates.F_dff is not None)
@@ -1339,7 +1349,46 @@ class MainWindow(QMainWindow):
         progress_dialog.setValue(100)
         progress_dialog.setLabelText('Done.')
         progress_dialog.close()
-  
+        
+    def on_compute_spatial_maximum_image(self):
+        progress_dialog = QProgressDialog('Processing movie', None, 0, 100, self)
+        progress_dialog.setWindowTitle('Calculating maximum image of the movie shown...')
+        progress_dialog.setModal(True)
+        progress_dialog.setValue(0)
+        progress_dialog.setFixedWidth(400)
+        progress_dialog.show()
+        QApplication.processEvents()
+        
+        w=self.frame_window
+        trange=range(0, self.num_frames, w)
+        max_image=np.full(self.dims, -np.inf, dtype=np.float32)
+        image_idx=np.zeros(self.dims, dtype=np.uint16)
+        print(f'Calculating temporal maximum of displayed movie in {len(trange)} steps...')
+        lastt=0
+        image_title2=''
+        for t in trange:
+            tmin=t-w if t-w>0 else 0
+            tmax=t+w+1 if t+w+1<self.num_frames else self.num_frames 
+            image_data, image_title = self.spatial_widget.get_spatial_view_image(tmin, tmax, add_vars_to_title=True)
+            image_idx = np.where(image_data > max_image, t, image_idx)
+            max_image = np.maximum(max_image, image_data)
+            
+            if t > lastt+200:
+                progress_dialog.setValue(t/self.num_frames*100)
+                lastt=t
+                progress_dialog.setLabelText(f'Calculating maximum (frame {t}/{self.num_frames})...')
+                QApplication.processEvents()
+                image_title2 = image_title
+            
+        self.spatial_maximum_image = max_image # temporal maximum image of the displayed image
+        self.spatial_maximum_image_idx = image_idx # temporal maximum image time indexes
+        self.spatial_maximum_image_title = 'Max. proj. of: ' + image_title2 + ' (static)'# title of the displayed image
+        self.spatial_widget.update_spatial_view(array_text='Max image')
+        progress_dialog.setValue(100)
+        progress_dialog.setLabelText('Done.')
+        progress_dialog.close()
+        
+            
     def perform_temporal_zoom(self):
         cnme=self.cnm.estimates
         component_index=self.selected_component
@@ -1707,6 +1756,7 @@ class TopWidget(QWidget):
             self.temporal_view.getPlotItem().showGrid(False)
             self.temporal_view.getPlotItem().showAxes(False)
             self.temporal_view.setBackground(QColor(200, 200, 210, 127))
+            self.temporal_view.getPlotItem().setMenuEnabled(False)
             return
         
         self.temporal_view.getPlotItem().getViewBox().setMouseEnabled(x=True, y=True)
@@ -1715,6 +1765,7 @@ class TopWidget(QWidget):
         self.temporal_view.getPlotItem().showGrid(x=True, y=True, alpha=0.3)
         self.temporal_view.getPlotItem().showAxes(True, showValues=(True, False, False, True))
         self.temporal_view.getPlotItem().setContentsMargins(0, 0, 10, 0)  # add margin to the right
+        self.temporal_view.getPlotItem().setMenuEnabled(True)
         
         self.temporal_line1=self.temporal_view.plot(x=[0,self.mainwindow.num_frames-1 ], y=[0,0], pen=pg.mkPen('r', width=1), name='component')
         self.temporal_line2 = pg.PlotCurveItem(x=[0,self.mainwindow.num_frames-1 ], y=[0,0], pen=pg.mkPen('g', width=1), name='component2')
@@ -1887,6 +1938,8 @@ class TopWidget(QWidget):
         self.time_label.setText(strin)
         
     def update_time_selector_line(self):
+        if not hasattr(self, 'temporal_marker'):
+            return
         value=self.mainwindow.selected_frame
         w=self.mainwindow.frame_window
         tmin=value-w if value-w>0 else 0
@@ -2263,7 +2316,9 @@ class ScatterWidget(QWidget):
 
             self.update_threshold_lines_on_scatterplot()
             
-        self.plt_ax.set_zlim(bottom=np.min(z), top=np.max(z))
+        self.plt_ax.set_xlim(xmin=0, xmax=1) #cnn
+        self.plt_ax.set_ylim(ymin=0, ymax=1) #rval
+        self.plt_ax.set_zlim(bottom=np.min(z), top=np.max(z)) #SNR
         self.plt_canvas.draw()
 
         
@@ -2356,6 +2411,14 @@ class SpatialWidget(QWidget):
         self.channel_combo.setToolTip('Select spatial data to display')
         left_layout.addWidget(self.channel_combo)  
         
+        self.spatial_avr_spinbox = QSpinBox()
+        self.spatial_avr_spinbox.setMinimum(0)
+        self.spatial_avr_spinbox.setMaximum(100)
+        self.spatial_avr_spinbox.setValue(0)
+        self.spatial_avr_spinbox.setToolTip('Sets spatial average Gauss kernel on the displayed images')
+        self.spatial_avr_spinbox.setPrefix('Avr: ')
+        left_layout.addWidget(self.spatial_avr_spinbox)
+        
         self.spatial_zoom_button = QPushButton('Zoom')
         self.spatial_zoom_button.setToolTip('Centers view on selected component, with zoom corresponding to neuron diameter')
         left_layout.addWidget(self.spatial_zoom_button)
@@ -2375,6 +2438,7 @@ class SpatialWidget(QWidget):
         
         self.data_info_label=QLabel('')
         self.data_info_label.setWordWrap(True)
+        self.data_info_label.setFixedWidth(95)
         #self.data_info_label.setStyleSheet('background-color: yellow;')
         left_layout.addWidget(self.data_info_label)
         
@@ -2388,7 +2452,61 @@ class SpatialWidget(QWidget):
         self.spatial_zoom_button.clicked.connect(self.on_spatial_zoom)
         self.spatial_zoom_auto_checkbox.stateChanged.connect(self.on_spatial_zoom_auto_changed)
         self.contour_combo.currentIndexChanged.connect(self.on_contour_combo_changed)
-
+        self.spatial_avr_spinbox.valueChanged.connect(self.on_spatial_avr_spinbox_changed)
+        self.spatial_view.sceneObj.sigMouseMoved.connect(self.on_mouseMoveEvent)
+ 
+    
+    def on_mouseMoveEvent(self, event):
+        # called on mouse move over spatial view
+        if self.mainwindow.cnm is None:
+            return
+        axpos= self.spatial_view.getViewBox().mapSceneToView(event)
+        im=self.spatial_image.image
+        x=int(np.floor(axpos.x()))
+        y=int(np.floor(axpos.y()))
+        if x < 0 or x >= im.shape[0] or y < 0 or y >= im.shape[1]:
+            if self.mainwindow.data_array is None: 
+                tex=f'Open data array in file menu to enable more options...'
+            else:
+                tex=""
+            self.data_info_label.setText(tex)
+            return
+        current_value=im[x, y]
+        x_um=(x-im.shape[0]/2)*self.mainwindow.pixel_size[0]        
+        y_um=(y-im.shape[1]/2)*self.mainwindow.pixel_size[1]
+        if abs(x_um) >= 1000:
+            x_um_str = f'{x_um:.0f}'
+        elif abs(x_um) >= 100:
+            x_um_str = f'{x_um:.1f}'
+        else:
+            x_um_str = f'{x_um:.2f}'
+        if abs(y_um) >= 1000:
+            y_um_str = f'{y_um:.0f}'
+        elif abs(y_um) >= 100:
+            y_um_str = f'{y_um:.1f}'
+        else:
+            y_um_str = f'{y_um:.2f}'
+        if abs(current_value) >= 1000:
+            current_value_str = f'{current_value:.0f}'
+        elif abs(current_value) >= 100:
+            current_value_str = f'{current_value:.1f}'
+        elif abs(current_value) >= 10:
+            current_value_str = f'{current_value:.2f}'
+        elif abs(current_value) >= 0.01:
+            current_value_str = f'{current_value:.3f}'
+        else:
+            current_value_str = f'{current_value:.3g}'
+        tex=f'X: {x} ({x_um_str} μm)\n' +\
+            f'Y: {y} ({y_um_str} μm)\n' +\
+            f'Value: {current_value_str}\n' 
+        
+        array_text=self.channel_combo.currentText()
+        if array_text == 'Max image':
+            idx=self.mainwindow.spatial_maximum_image_idx[x,y]
+            tex+=f'Time idx: {idx}\n'
+        self.data_info_label.setText(tex)
+        
+        
     def on_contour_combo_changed(self, index):
         # called on change of contour selector combo box
         self.update_spatial_view()
@@ -2400,6 +2518,8 @@ class SpatialWidget(QWidget):
         if self.spatial_zoom_auto_checkbox.isChecked():
             self.perform_spatial_zoom_on_component(self.mainwindow.selected_component)
 
+    def on_spatial_avr_spinbox_changed(self):
+        self.update_spatial_view_image()
         
     def on_channel_combo_changed(self, index):
         #called on change of channel selector combo box
@@ -2415,6 +2535,7 @@ class SpatialWidget(QWidget):
     def recreate_spatial_view(self):
         self.channel_combo.setEnabled(self.mainwindow.cnm is not None)
         self.data_info_label.setEnabled(self.mainwindow.cnm is not None)
+        self.spatial_avr_spinbox.setEnabled(self.mainwindow.cnm is not None)
         
         if self.mainwindow.cnm is None:
             text='No data loaded yet'
@@ -2424,6 +2545,7 @@ class SpatialWidget(QWidget):
             self.spatial_view.addItem(text)
             self.spatial_view.getPlotItem().showGrid(False)
             self.spatial_view.getPlotItem().showAxes(False)
+            self.spatial_view.getPlotItem().setMenuEnabled(False)
             self.spatial_view.setBackground(QColor(200, 200, 210, 127))
             self.spatial_zoom_auto_checkbox.setEnabled(False)
             self.spatial_zoom_button.setEnabled(False)
@@ -2449,17 +2571,16 @@ class SpatialWidget(QWidget):
         plot_item.setAspectLocked(True)
         plot_item.showAxes(True, showValues=(True, False, False, True))
         plot_item.showGrid(x=False, y=False)
-        plot_item.setMenuEnabled(False)
+        plot_item.setMenuEnabled(True)
+        for item in {'Transforms', 'Downsample', 'Average','Alpha',  'Points'}:
+            plot_item.setContextMenuActionVisible(item, False)
         plot_item.invertY(True)
         
-
         if self.mainwindow.data_array is None: 
-            self.data_info_label.setText(f'Open data array in file menu to enable more options...')
-            self.data_info_label.setFixedWidth(100)
-            self.data_info_label.setVisible(True)
+            tex=f'Open data array in file menu to enable more options...'
         else:
-            self.data_info_label.setText(f'')
-            self.data_info_label.setVisible(False)
+            tex=""
+        self.data_info_label.setText(tex)
 
         # Configure axis tick lengths explicitly
         for side in ('top', 'right'):
@@ -2539,6 +2660,9 @@ class SpatialWidget(QWidget):
                 possible_array_text.append(type.capitalize())
         if hasattr(cnme, 'sn') and cnme.sn is not None:
             possible_array_text.append(f'sn')
+        if self == self.mainwindow.spatial_widget:
+            if self.mainwindow.spatial_maximum_image is not None:
+                possible_array_text.append('Max image')
         
         if array_text is None:
             previous_text=self.channel_combo.currentText()
@@ -2557,29 +2681,10 @@ class SpatialWidget(QWidget):
         component_idx = self.mainwindow.selected_component
         
         plot_item = self.spatial_view.getPlotItem()
-        if array_text == 'A':
-            ctitle=f'Spatial component footprint ({component_idx})'
-        elif array_text == 'Data':
-            ctitle=f'Original data (movie)'
-        elif array_text == 'RCM':
-            ctitle=f'Reconstructed movie (A ⊗ C) (movie)'
-        elif array_text == 'RCM (Good)':
-            ctitle=f'Reconstructed movie (A ⊗ C) using good components (movie)'
-        elif array_text == 'RCB':
-            ctitle=f'Reconstructed background (b ⊗ f) (movie)'
-        elif array_text == 'Residuals':
-            ctitle=f'Residuals (Y - (A ⊗ C) - (b ⊗ f)) (movie)'
-        elif array_text == 'Residuals (Good)':
-            ctitle=f'Residuals (Y - (A ⊗ C) - (b ⊗ f)) using good components (movie)'
-        elif array_text[0] == 'B':
-            ctitle=f'Background component {int(array_text[1:])}'
-        elif array_text == 'Cn':
-            ctitle=f'Correlation image'
-        elif array_text in ['Mean', 'Max', 'Std']:
-            ctitle=f'{array_text} projection image'
-        else:
-            ctitle=f'Array: {array_text}'
+        _, ctitle=self.get_spatial_view_image(0,0)
         plot_item.setTitle(ctitle)
+        self.mainwindow.compute_spatial_maximum_action.setEnabled('(static)' not in ctitle)
+        self.spatial_avr_spinbox.setEnabled(array_text != 'Max image')
         
         if self.spatial_zoom_auto_checkbox.isChecked():
             self.perform_spatial_zoom_on_component(component_idx)
@@ -2646,21 +2751,15 @@ class SpatialWidget(QWidget):
                 peny=self.badpen
             self.contur_items[idx_to_plot].setPen(peny)
             self.contur_items[idx_to_plot].setClickable(clickarray[idx_to_plot])                                       
-            
-        
-    def update_spatial_view_image(self, setLUT=False):
-        #update only the image according to t
-        
+
+
+    def get_spatial_view_image(self, tmin, tmax, add_vars_to_title=False):    
         array_text=self.channel_combo.currentText()
-        component_idx = self.mainwindow.selected_component
-        t=self.mainwindow.selected_frame
-        w=self.mainwindow.frame_window
-        tmin=t-w if t-w>0 else 0
-        tmax=t+w+1 if t+w+1<self.mainwindow.num_frames else self.mainwindow.num_frames        
-        #residuals = self._raw_movie[indices] - self._rcm[indices] - self._rcb[indices]
+        component_idx = self.mainwindow.selected_component       
         
         if array_text == 'A':
-            image_data = np.reshape(self.mainwindow.A_array[:, component_idx], self.mainwindow.dims) #(self.dims[1], self.dims[0]), order='F').T
+            image_data = np.reshape(self.mainwindow.A_array[:, component_idx], self.mainwindow.dims) 
+            ctitle=f'Spatial component footprint ({component_idx})(static)'
         elif array_text == 'Data':
             #print('display: elapsed off {:.2f}'.format((time.perf_counter()-self.ctime)))
             #self.ctime=time.perf_counter()
@@ -2668,18 +2767,22 @@ class SpatialWidget(QWidget):
             res=np.mean(res, axis=1)
 
             image_data = res.reshape(self.mainwindow.dims)
+            ctitle=f'Original data (movie)'
         elif array_text == 'RCM':
             res=np.dot(self.mainwindow.A_array[:, :] , self.mainwindow.cnm.estimates.C[:, tmin:tmax])
             res=np.mean(res, axis=1)
             image_data = res.reshape(self.mainwindow.dims)
+            ctitle=f'Reconstructed movie (A ⊗ C)'
         elif array_text == 'RCM (Good)':
             res=np.dot(self.mainwindow.A_array[:, self.mainwindow.cnm.estimates.idx_components] , self.mainwindow.cnm.estimates.C[self.mainwindow.cnm.estimates.idx_components, tmin:tmax])
             res=np.mean(res, axis=1)
             image_data = res.reshape(self.mainwindow.dims)
+            ctitle=f'Reconstructed movie (A ⊗ C) using good comps.'
         elif array_text == 'RCB':
             res=np.dot(self.mainwindow.cnm.estimates.b[:, :] , self.mainwindow.cnm.estimates.f[:, tmin:tmax])
             res=np.mean(res, axis=1)
             image_data = res.reshape(self.mainwindow.dims)
+            ctitle=f'Reconstructed background (b ⊗ f)'
         elif array_text == 'Residuals':
             res=self.mainwindow.data_array[:,tmin:tmax]
             rcm=np.dot(self.mainwindow.A_array[:, :] , self.mainwindow.cnm.estimates.C[:, tmin:tmax])
@@ -2687,6 +2790,7 @@ class SpatialWidget(QWidget):
             res=res-rcm-rcb
             res=np.mean(res, axis=1)
             image_data = res.reshape(self.mainwindow.dims)
+            ctitle=f'Residuals (Y - (A ⊗ C) - (b ⊗ f))'
         elif array_text == 'Residuals (Good)':
             res=self.mainwindow.data_array[:,tmin:tmax]
             rcm=np.dot(self.mainwindow.A_array[:, self.mainwindow.cnm.estimates.idx_components] , self.mainwindow.cnm.estimates.C[self.mainwindow.cnm.estimates.idx_components, tmin:tmax])
@@ -2694,28 +2798,58 @@ class SpatialWidget(QWidget):
             res=res-rcm-rcb
             res=np.mean(res, axis=1)
             image_data = res.reshape(self.mainwindow.dims)
+            ctitle=f'Residuals (Y - (A ⊗ C) - (b ⊗ f)) using good comps.'
         elif array_text[0] == 'B':
             try:
                 bgindex = int(array_text[1:])
             except ValueError:
                 raise ValueError(f'Invalid array text: {array_text}')
             image_data = self.mainwindow.cnm.estimates.b[:, bgindex].reshape(self.mainwindow.dims)
+            ctitle=f'Background component {bgindex} (static)'
         elif array_text == 'Cn':
             image_data = self.mainwindow.cnm.estimates.Cn
+            ctitle=f'Correlation image (static)'
         elif array_text in ['Mean', 'Max', 'Std']:
             image_data = getattr(self.mainwindow, array_text.lower()+'_projection_array')
+            ctitle=f'{array_text} projection image (static)'
         elif array_text == 'sn':
             image_data = self.mainwindow.cnm.estimates.sn.reshape(self.mainwindow.dims)
+            ctitle=f'Array: {array_text} (static)'
+        elif array_text == 'Max image':
+            image_data = self.mainwindow.spatial_maximum_image
+            ctitle=self.mainwindow.spatial_maximum_image_title
         else:
             raise NotImplementedError   
         
         # Update image data
+        avr=self.spatial_avr_spinbox.value()
+        if avr>0 and array_text != 'Max image':
+            kernel = cv2.getGaussianKernel(2*avr+1, avr)
+            kernel = np.outer(kernel, kernel)
+            image_data = cv2.filter2D(image_data, -1, kernel)
+        
+        if add_vars_to_title:
+            ctitle+=f'(w={int((tmax-tmin-1)/2)},a={avr})'
+        
+        return image_data, ctitle
+        
+    def update_spatial_view_image(self, setLUT=False):
+        
+        #update only the image according to t
+        t=self.mainwindow.selected_frame
+        w=self.mainwindow.frame_window
+        tmin=t-w if t-w>0 else 0
+        tmax=t+w+1 if t+w+1<self.mainwindow.num_frames else self.mainwindow.num_frames 
+        image_data, _ = self.get_spatial_view_image(tmin, tmax)
+        
         self.spatial_image.setImage(image_data, autoLevels=False)
    
         if setLUT:
             # Update colorbar limits explicitly
             min_val, max_val = np.min(image_data), np.max(image_data)
             self.colorbar_item.setLevels(values=[min_val, max_val])       
+    
+
     
     def on_contour_click(self, ev):
         index = int(ev.name())
