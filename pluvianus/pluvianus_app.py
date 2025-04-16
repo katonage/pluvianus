@@ -332,7 +332,7 @@ class MainWindow(QMainWindow):
         self.compute_projections_action.triggered.connect(self.on_compute_projections_action)
         self.compute_cn_action.triggered.connect(self.on_compute_cn_action)
         self.compute_origtrace_action.triggered.connect(self.on_compute_origtrace_action)
-        self.compute_spatial_maximum_action.triggered.connect(self.on_compute_spatial_maximum_image)
+        self.compute_spatial_maximum_action.triggered.connect(self.on_compute_spatial_movie_maximum)
         self.opts_action.triggered.connect(self.on_opts_action)
         
         self.info_action.triggered.connect(self.on_info_action)
@@ -1350,7 +1350,7 @@ class MainWindow(QMainWindow):
         progress_dialog.setLabelText('Done.')
         progress_dialog.close()
         
-    def on_compute_spatial_maximum_image(self):
+    def on_compute_spatial_movie_maximum(self):
         progress_dialog = QProgressDialog('Processing movie', None, 0, 100, self)
         progress_dialog.setWindowTitle('Calculating maximum image of the movie shown...')
         progress_dialog.setModal(True)
