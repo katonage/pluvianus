@@ -2203,12 +2203,13 @@ class ScatterWidget(QWidget):
                 if xvec is None:
                     return
                 yvec = cnme.r_values
-                zvec = cnme.SNR_comp
+                zvec = np.log10(cnme.SNR_comp)
+                zvec = np.where(np.isfinite(zvec), zvec, 0)
                 xlim=self.plt_ax.get_xlim()
                 ylim=self.plt_ax.get_ylim()
                 zlim=self.plt_ax.get_zlim()
                 cnme=self.mainwindow.cnm.estimates
-                x, y, z = xvec[ind["ind"][0]], yvec[ind["ind"][0]], np.log10(zvec[ind["ind"][0]])
+                x, y, z = xvec[ind["ind"][0]], yvec[ind["ind"][0]], zvec[ind["ind"][0]]
                 
                 x=[xlim[0], xlim[1],np.nan, x, x, np.nan,x,x]
                 y=[y,y, np.nan,ylim[0], ylim[1], np.nan,y,y]
@@ -2272,7 +2273,7 @@ class ScatterWidget(QWidget):
         self.plt_ax.cla()
         self.plt_ax.zaxis.set_major_formatter(plt.FuncFormatter(lambda val, pos=None: "{:.0f}".format(round(10**val)) if val >= 1 else "{:.1g}".format(10**val)))
         
-        stubs = np.array([1,2,3,4,5])
+        stubs = np.array([1,2,3,5])
         allstubs = np.concatenate([stubs * 10 ** m for m in np.arange(-5.0, 6.0, dtype=float)])
         self.plt_ax.zaxis.set_major_locator(plt.FixedLocator(np.log10(allstubs)))
         
@@ -2292,6 +2293,7 @@ class ScatterWidget(QWidget):
         x = cnme.cnn_preds
         y = cnme.r_values
         z = np.log10(cnme.SNR_comp)
+        z = np.where(np.isfinite(z), z, 0)
         self.plt_scatter = self.plt_ax.scatter(x, y, z, c=colors, s=10, alpha=0.5, picker=5)
             
         #self.plt_figure.colorbar(self.scatter, ax=self.ax, shrink=0.5)
@@ -2318,7 +2320,7 @@ class ScatterWidget(QWidget):
             
         self.plt_ax.set_xlim(xmin=0, xmax=1) #cnn
         self.plt_ax.set_ylim(ymin=0, ymax=1) #rval
-        self.plt_ax.set_zlim(bottom=np.min(z), top=np.max(z)) #SNR
+        self.plt_ax.set_zlim(bottom=np.nanmin(z), top=np.nanmax(z)) #SNR
         self.plt_canvas.draw()
 
         
@@ -2329,13 +2331,14 @@ class ScatterWidget(QWidget):
         x = cnm.estimates.cnn_preds
         y = cnm.estimates.r_values
         z = cnm.estimates.SNR_comp
+        z = np.where(np.isfinite(z), z, 1)
         lines = {
-                'X = min_cnn_thr': {'x': [float(cnm.params.quality['min_cnn_thr'])]*5, 'y': [float(min(y)), float(max(y)), float(max(y)), float(min(y)), float(min(y))], 'z': [float(min(z)), float(min(z)), float(max(z)), float(max(z)), float(min(z))], 'color': 'green'},
-                'X = cnn_lowest': {'x': [float(cnm.params.quality['cnn_lowest'])]*5, 'y': [float(min(y)), float(max(y)), float(max(y)), float(min(y)), float(min(y))], 'z': [float(min(z)), float(min(z)), float(max(z)), float(max(z)), float(min(z))], 'color': 'green'},
-                'Y = rval_thr': {'x': [float(min(x)), float(max(x)), float(max(x)), float(min(x)), float(min(x))], 'y': [float(cnm.params.quality['rval_thr'])]*5, 'z': [float(min(z)), float(min(z)), float(max(z)), float(max(z)), float(min(z))], 'color': 'blue'},
-                'Y = rval_lowest': {'x': [float(min(x)), float(max(x)), float(max(x)), float(min(x)), float(min(x))], 'y': [float(cnm.params.quality['rval_lowest'])]*5, 'z': [float(min(z)), float(min(z)), float(max(z)), float(max(z)), float(min(z))], 'color': 'blue'},
-                'Z = min_SNR': {'x': [float(min(x)), float(max(x)), float(max(x)), float(min(x)), float(min(x))], 'y': [float(min(y)), float(min(y)), float(max(y)), float(max(y)), float(min(y))], 'z': [float(cnm.params.quality['min_SNR'])]*5, 'color': 'magenta'},
-                'Z = SNR_lowest': {'x': [float(min(x)), float(max(x)), float(max(x)), float(min(x)), float(min(x))], 'y': [float(min(y)), float(min(y)), float(max(y)), float(max(y)), float(min(y))], 'z': [float(cnm.params.quality['SNR_lowest'])]*5, 'color': 'magenta'},
+                'min_cnn_thr': {'x': [float(cnm.params.quality['min_cnn_thr'])]*5, 'y': [float(min(y)), float(max(y)), float(max(y)), float(min(y)), float(min(y))], 'z': [float(min(z)), float(min(z)), float(max(z)), float(max(z)), float(min(z))], 'color': 'green'},
+                'cnn_lowest': {'x': [float(cnm.params.quality['cnn_lowest'])]*5, 'y': [float(min(y)), float(max(y)), float(max(y)), float(min(y)), float(min(y))], 'z': [float(min(z)), float(min(z)), float(max(z)), float(max(z)), float(min(z))], 'color': 'green'},
+                'rval_thr': {'x': [float(min(x)), float(max(x)), float(max(x)), float(min(x)), float(min(x))], 'y': [float(cnm.params.quality['rval_thr'])]*5, 'z': [float(min(z)), float(min(z)), float(max(z)), float(max(z)), float(min(z))], 'color': 'blue'},
+                'rval_lowest': {'x': [float(min(x)), float(max(x)), float(max(x)), float(min(x)), float(min(x))], 'y': [float(cnm.params.quality['rval_lowest'])]*5, 'z': [float(min(z)), float(min(z)), float(max(z)), float(max(z)), float(min(z))], 'color': 'blue'},
+                'min_SNR': {'x': [float(min(x)), float(max(x)), float(max(x)), float(min(x)), float(min(x))], 'y': [float(min(y)), float(min(y)), float(max(y)), float(max(y)), float(min(y))], 'z': [float(cnm.params.quality['min_SNR'])]*5, 'color': 'magenta'},
+                'SNR_lowest': {'x': [float(min(x)), float(max(x)), float(max(x)), float(min(x)), float(min(x))], 'y': [float(min(y)), float(min(y)), float(max(y)), float(max(y)), float(min(y))], 'z': [float(cnm.params.quality['SNR_lowest'])]*5, 'color': 'magenta'},
             }
         return lines
     
@@ -2358,6 +2361,7 @@ class ScatterWidget(QWidget):
         x_val = float(cnm.estimates.cnn_preds[index])
         y_val = float(cnm.estimates.r_values[index])
         z_val = np.log10(float(cnm.estimates.SNR_comp[index]))
+        z_val = z_val if np.isfinite(z_val) else 0.0
         if index in cnm.estimates.idx_components:
             color = 'green'
         else:
@@ -2439,6 +2443,8 @@ class SpatialWidget(QWidget):
         self.data_info_label=QLabel('')
         self.data_info_label.setWordWrap(True)
         self.data_info_label.setFixedWidth(95)
+        self.data_info_label.setFixedHeight(150)
+        self.data_info_label.setAlignment(Qt.AlignTop)
         #self.data_info_label.setStyleSheet('background-color: yellow;')
         left_layout.addWidget(self.data_info_label)
         
@@ -2679,9 +2685,10 @@ class SpatialWidget(QWidget):
         array_text=self.channel_combo.currentText()
         
         component_idx = self.mainwindow.selected_component
-        
+
+        ctitle=self.update_spatial_view_image(setLUT=setLUT)
+                
         plot_item = self.spatial_view.getPlotItem()
-        _, ctitle=self.get_spatial_view_image(0,0)
         plot_item.setTitle(ctitle)
         self.mainwindow.compute_spatial_maximum_action.setEnabled('(static)' not in ctitle)
         self.spatial_avr_spinbox.setEnabled(array_text != 'Max image')
@@ -2689,8 +2696,6 @@ class SpatialWidget(QWidget):
         if self.spatial_zoom_auto_checkbox.isChecked():
             self.perform_spatial_zoom_on_component(component_idx)
             
-        self.update_spatial_view_image(setLUT=setLUT)
-        
         #plotting contours
         #for idx_to_plot in [component_idx]:
         contour_mode=self.contour_combo.currentText()
@@ -2840,7 +2845,7 @@ class SpatialWidget(QWidget):
         w=self.mainwindow.frame_window
         tmin=t-w if t-w>0 else 0
         tmax=t+w+1 if t+w+1<self.mainwindow.num_frames else self.mainwindow.num_frames 
-        image_data, _ = self.get_spatial_view_image(tmin, tmax)
+        image_data, ctitle = self.get_spatial_view_image(tmin, tmax)
         
         self.spatial_image.setImage(image_data, autoLevels=False)
    
@@ -2849,7 +2854,7 @@ class SpatialWidget(QWidget):
             min_val, max_val = np.min(image_data), np.max(image_data)
             self.colorbar_item.setLevels(values=[min_val, max_val])       
     
-
+        return ctitle
     
     def on_contour_click(self, ev):
         index = int(ev.name())
