@@ -2362,7 +2362,7 @@ class ScatterWidget(QWidget):
         y_val = float(cnm.estimates.r_values[index])
         z_val = np.log10(float(cnm.estimates.SNR_comp[index]))
         z_val = z_val if np.isfinite(z_val) else 0.0
-        if index in cnm.estimates.idx_components:
+        if cnm.estimates.idx_components is not None and index in cnm.estimates.idx_components:
             color = 'green'
         else:
             color = 'magenta'     
@@ -2578,8 +2578,8 @@ class SpatialWidget(QWidget):
         plot_item.showAxes(True, showValues=(True, False, False, True))
         plot_item.showGrid(x=False, y=False)
         plot_item.setMenuEnabled(True)
-        for item in {'Transforms', 'Downsample', 'Average','Alpha',  'Points'}:
-            plot_item.setContextMenuActionVisible(item, False)
+        #for item in {'Transforms', 'Downsample', 'Average','Alpha',  'Points'}:
+        #    plot_item.setContextMenuActionVisible(item, False)
         plot_item.invertY(True)
         
         if self.mainwindow.data_array is None: 
