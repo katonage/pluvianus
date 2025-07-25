@@ -261,7 +261,7 @@ class MainWindow(QMainWindow):
         self.save_max_image_action = QAction('Save Max Image...', self)
         file_menu.addAction(self.save_max_image_action)
         self.save_std_image_action = QAction('Save Std Image...', self)
-        file_menu.addAction(self.save_std_image_action)
+        file_menu.addAction(self.save_std_image_action) # Need to add maximum residuals here later
         
         comp_menu = self.menuBar().addMenu('Compute')
         self.detr_action = QAction('Detrend ΔF/F', self)
@@ -276,6 +276,8 @@ class MainWindow(QMainWindow):
         comp_menu.addAction(self.compute_origtrace_action)
         self.compute_spatial_maximum_action = QAction('Compute Maximum of Displayed Movie (actual settings)', self)
         comp_menu.addAction(self.compute_spatial_maximum_action)
+        self.compute_residual_maximums_action = QAction('Compute Temporal Maximum of Residuals', self)
+        comp_menu.addAction(self.compute_residual_maximums_action)
         
         
         view_menu = self.menuBar().addMenu('View')
@@ -333,6 +335,7 @@ class MainWindow(QMainWindow):
         self.compute_cn_action.triggered.connect(self.on_compute_cn_action)
         self.compute_origtrace_action.triggered.connect(self.on_compute_origtrace_action)
         self.compute_spatial_maximum_action.triggered.connect(self.on_compute_spatial_movie_maximum)
+        self.compute_residual_maximums_action.triggered.connect(self.on_compute_residual_maximums)
         self.opts_action.triggered.connect(self.on_opts_action)
         
         self.info_action.triggered.connect(self.on_info_action)
@@ -388,6 +391,10 @@ class MainWindow(QMainWindow):
         self.orig_trace_array = None # computed original fluorescence traces
         self.orig_trace_array_neuropil = None # computed original fluorescence traces' neuropil
         # correlation image is stored in the cnm object
+        self.max_res_none = None
+        self.max_res_good = None
+        self.max_res_all = None # 3 types of maximum residuals
+
         self.spatial_maximum_image = None # temporal maximum image of the displayed image
         self.spatial_maximum_image_idx = None # temporal maximum image time indexes
         self.spatial_maximum_image_title = '' # temporal maximum image title
@@ -851,6 +858,7 @@ class MainWindow(QMainWindow):
         self.compute_cn_action.setEnabled(self.data_array is not None)
         self.compute_origtrace_action.setEnabled(self.data_array is not None)
         self.compute_spatial_maximum_action.setEnabled(self.cnm is not None)
+        self.compute_residual_maximums_action.setEnabled(self.data_array is not None)
         self.save_trace_action_c_a_n.setEnabled(self.cnm is not None)
         self.save_trace_action_c_g_n.setEnabled(self.cnm is not None and self.cnm.estimates.idx_components is not None)
         self.save_trace_action_f_a_n.setEnabled(self.cnm is not None and self.cnm.estimates.F_dff is not None)
@@ -1349,7 +1357,86 @@ class MainWindow(QMainWindow):
         progress_dialog.setValue(100)
         progress_dialog.setLabelText('Done.')
         progress_dialog.close()
+
+    def on_compute_residual_maximums(self):
+        progress_dialog = QProgressDialog('Processing movie', None, 0, 100, self)
+        progress_dialog.setWindowTitle('Calculating residual maximums of ovie shown...')
+        progress_dialog.setModal(True)
+        progress_dialog.setValue(0)
+        progress_dialog.setFixedWidth(400)
+        progress_dialog.show()
+        QApplication.processEvents()
+
+        # Initialize time range
+        w = self.frame_window
+        num_frames = self.num_frames
+        t_range = range(0, num_frames, w)
+
+        # Component indices and estimates
+        idx_good_components = self.cnm.estimates.idx_components
+        idx_bad_components = sorted(set(range(self.numcomps)) - set(idx_good_components))
+
+        estimates = self.cnm.estimates
+        A_array = self.A_array
+
+        # Initialize residual maximums 
+        dims = self.dims
+        max_res_none = np.full(dims, -np.inf, dtype=np.float32)
+        max_res_good = np.full(dims, -np.inf, dtype=np.float32)
+        max_res_all = np.full(dims, -np.inf, dtype=np.float32) # The 3 types of residuals depending on what we subtract from the difference between the original movie and the reconstructed background
         
+        # Setting kernel for later spatial averaging
+        avr = 1
+        kernel = cv2.getGaussianKernel(2 * avr + 1, avr)
+        kernel = np.outer(kernel, kernel)
+
+        # Main loop for time intervals
+        last_t = 0
+        for t in t_range:
+            t_min = t - w if t - w > 0 else 0
+            t_max = t + w + 1 if t + w + 1 < num_frames else num_frames
+
+            Y = self.data_array[:,t_min:t_max] # Original data
+            BG = np.dot(estimates.b[:, :], estimates.f[:, t_min:t_max]) # Reconstructed background
+            GC = np.dot(A_array[:, idx_good_components], estimates.C[idx_good_components, t_min:t_max]) # Good components
+            BC = np.dot(A_array[:, idx_bad_components], estimates.C[idx_bad_components, t_min:t_max]) # Bad components
+
+            # Subtracting components and averaging
+            data_res_none = np.mean(Y - BG, axis=1)
+            data_res_none = data_res_none.reshape(dims)
+
+            data_res_good = np.mean(Y - BG - GC, axis=1)
+            data_res_good = data_res_good.reshape(dims)
+
+            data_res_all = np.mean(Y - BG - GC - BC, axis=1)
+            data_res_all = data_res_all.reshape(dims)
+
+            # Spatial averaging and saving maximum intesity pixels
+            data_res_none = cv2.filter2D(data_res_none, -1, kernel)   
+            max_res_none = np.maximum(max_res_none, data_res_none)
+
+            data_res_good = cv2.filter2D(data_res_good, -1, kernel)   
+            max_res_good = np.maximum(max_res_good, data_res_good)
+
+            data_res_all = cv2.filter2D(data_res_all, -1, kernel)   
+            max_res_all = np.maximum(max_res_all, data_res_all)
+            
+            if t > last_t + 200:
+                progress_dialog.setValue(t / num_frames * 100)
+                last_t = t
+                progress_dialog.setLabelText(f'Calculating residual maximums (frame {t}/{num_frames})...')
+                QApplication.processEvents()
+            
+        # Saving final images
+        self.max_res_none = max_res_none
+        self.max_res_good = max_res_good
+        self.max_res_all = max_res_all
+
+        self.spatial_widget.update_spatial_view(array_text='MaxResAll')
+        progress_dialog.setValue(100)
+        progress_dialog.setLabelText('Done.')
+        progress_dialog.close()
+
     def on_compute_spatial_movie_maximum(self):
         progress_dialog = QProgressDialog('Processing movie', None, 0, 100, self)
         progress_dialog.setWindowTitle('Calculating maximum image of the movie shown...')
@@ -2669,6 +2756,12 @@ class SpatialWidget(QWidget):
         if self == self.mainwindow.spatial_widget:
             if self.mainwindow.spatial_maximum_image is not None:
                 possible_array_text.append('Max image')
+            if self.mainwindow.max_res_none is not None:
+                possible_array_text.append('MaxResNone')
+            if self.mainwindow.max_res_good is not None:
+                possible_array_text.append('MaxResGood')
+            if self.mainwindow.max_res_all is not None:
+                possible_array_text.append('MaxResAll')
         
         if array_text is None:
             previous_text=self.channel_combo.currentText()
@@ -2691,7 +2784,8 @@ class SpatialWidget(QWidget):
         plot_item = self.spatial_view.getPlotItem()
         plot_item.setTitle(ctitle)
         self.mainwindow.compute_spatial_maximum_action.setEnabled('(static)' not in ctitle)
-        self.spatial_avr_spinbox.setEnabled(array_text != 'Max image')
+        #self.mainwindow.compute_residual_maximums_action.setEnabled('(static)' not in ctitle)
+        self.spatial_avr_spinbox.setEnabled(array_text not in ['Max image', 'Max res none', 'Max res good', 'Max res all'])
         
         if self.spatial_zoom_auto_checkbox.isChecked():
             self.perform_spatial_zoom_on_component(component_idx)
@@ -2820,6 +2914,15 @@ class SpatialWidget(QWidget):
         elif array_text == 'sn':
             image_data = self.mainwindow.cnm.estimates.sn.reshape(self.mainwindow.dims)
             ctitle=f'Array: {array_text} (static)'
+        elif array_text == 'MaxResNone':
+            image_data = self.mainwindow.max_res_none
+            ctitle = 'Temporal maximum of Y - BG (static)'
+        elif array_text == 'MaxResGood':
+            image_data = self.mainwindow.max_res_good
+            ctitle = 'Temporal maximum of Y - BG - GC (static)'
+        elif array_text == 'MaxResAll':
+            image_data = self.mainwindow.max_res_all
+            ctitle = 'Temporal maximum of Y - BG - GC - BC (static)'
         elif array_text == 'Max image':
             image_data = self.mainwindow.spatial_maximum_image
             ctitle=self.mainwindow.spatial_maximum_image_title
