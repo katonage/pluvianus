@@ -1,9 +1,8 @@
 import sys
 import os
 import numpy as np
+from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QFileDialog
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtWidgets
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QFileDialog
 import pynapple as nap
 import json
 import tempfile
@@ -32,7 +31,7 @@ def load_state():
         else:
             return ""
 
-app = QtWidgets.QApplication(sys.argv)
+app = QApplication(sys.argv)
 app.setApplicationName("Pynapple NPZ viewer")
 
 # Create a central widget with a vertical layout
