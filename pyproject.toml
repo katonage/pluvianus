@@ -8,7 +8,7 @@ authors = [
 ]
 license = { file = "LICENSE" }
 dependencies = [
-    "PySide6<6.4.0.1",
+    "PySide6",
     "numpy",
     "pyqtgraph",
     "caiman",
