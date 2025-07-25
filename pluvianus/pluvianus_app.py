@@ -264,7 +264,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.save_std_image_action)
         
         comp_menu = self.menuBar().addMenu('Compute')
-        self.detr_action = QAction('Detrend df/f', self)
+        self.detr_action = QAction('Detrend ΔF/F', self)
         comp_menu.addAction(self.detr_action)
         self.compute_component_evaluation_action = QAction('Compute Component Metrics', self)
         comp_menu.addAction(self.compute_component_evaluation_action)
