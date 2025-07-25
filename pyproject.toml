@@ -8,7 +8,7 @@ authors = [
     { name = "Gergely Katona", email = "katona.gergely@ttk.hu" }
 ]
 license = { file = "LICENSE" }
-keywords = ["CaImAn", "GUI", "neuroscience"]
+keywords = ["CaImAn", "GUI", "neuroscience", "calcium imaging"; "two-photon microscopy"]
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",

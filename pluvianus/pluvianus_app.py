@@ -1,4 +1,5 @@
 import sys
+
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QSplitter,QScrollArea, QCheckBox,QSlider,
     QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog, QSizePolicy,
@@ -28,15 +29,24 @@ import cv2
 import inspect
 import time
 
+print('Loading caiman...')   
 import caiman as cm # type: ignore
 from caiman.source_extraction import cnmf # type: ignore
 from caiman.utils.visualization import get_contours as caiman_get_contours # type: ignore
+print('Caiman loaded')
 
 try:
     from pluvianus import __version__
 except ImportError:
     __version__ = "0.0.0-dev"
 __date__ = time.strftime("%Y-%m-%d")
+
+if 'PyQt5' in sys.modules:
+    print("Warning: PyQt5 is loaded,.")
+if 'PyQt6' in sys.modules:
+    print("Warning: PyQt6 is loaded.")    
+if 'PySide6' in sys.modules:
+    print("Warning: PySide6 is loaded.")
 
 class OptsWindow(QMainWindow):
     def __init__(self, opts, title='Options'):
