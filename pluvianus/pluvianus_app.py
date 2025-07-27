@@ -41,12 +41,6 @@ except ImportError:
     __version__ = "0.0.0-dev"
 __date__ = time.strftime("%Y-%m-%d")
 
-if 'PyQt5' in sys.modules:
-    print("Warning: PyQt5 is loaded,.")
-if 'PyQt6' in sys.modules:
-    print("Warning: PyQt6 is loaded.")    
-if 'PySide6' in sys.modules:
-    print("Warning: PySide6 is loaded.")
 
 class OptsWindow(QMainWindow):
     def __init__(self, opts, title='Options'):
@@ -2655,7 +2649,7 @@ class SpatialWidget(QWidget):
             self.contour_combo.setEnabled(False)
             return
         
-        print('Rendering spatial view, contours...')
+        #print('Rendering spatial view, contours...')
         self.spatial_view.disableAutoRange()
         self.spatial_view.clear()
         self.spatial_view.setBackground(None)
