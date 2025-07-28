@@ -1509,7 +1509,10 @@ class MainWindow(QMainWindow):
         vec=cnme.C[component_index, :]
         max_index = np.argmax(vec)
         
-        zoomwindow=self.decay_time*self.framerate*10
+        #zoomwindow=self.decay_time*self.framerate*10 # zooming
+        current_xrange = self.temporal_widget.temporal_view.viewRange()[0]
+        zoomwindow = (current_xrange[1] - current_xrange[0]) / 2 # just centering
+
         xrange=max_index-zoomwindow,max_index+zoomwindow
         self.temporal_widget.temporal_view.setRange(xRange=xrange, padding=0.0)    
         self.set_selected_frame(max_index)
@@ -1658,12 +1661,12 @@ class TopWidget(QWidget):
         self.range_to_all_button2.setToolTip("Set range of Y axis to match all component's tarces.")
         arr1_but.addWidget(self.range_to_all_button2)
         
-        self.temporal_zoom_button = QPushButton('Zoom')
-        self.temporal_zoom_button.setToolTip('Centers view on largest peak on C, with zoom corresponding to decay time')
+        self.temporal_zoom_button = QPushButton('Center')
+        self.temporal_zoom_button.setToolTip('Center view on the largest activity peak (max of C); scroll on the horizontal axis to adjust zoom')
         left_layout.addWidget(self.temporal_zoom_button)
         self.temporal_zoom_auto_checkbox = QCheckBox('Auto')
         self.temporal_zoom_auto_checkbox.setStyleSheet('margin-left: 8px;')   
-        self.temporal_zoom_auto_checkbox.setToolTip('Centers view on largest peak on C, with zoom corresponding to decay time')
+        self.temporal_zoom_auto_checkbox.setToolTip('Automatically centers view on the largest activity peak (max of C); scroll on the horizontal axis to adjust zoom')
         left_layout.addWidget(self.temporal_zoom_auto_checkbox)
         
         head_label=QLabel('Metrics:')
@@ -2538,11 +2541,11 @@ class SpatialWidget(QWidget):
         left_layout.addWidget(self.spatial_avr_spinbox)
         
         self.spatial_zoom_button = QPushButton('Zoom')
-        self.spatial_zoom_button.setToolTip('Centers view on selected component, with zoom corresponding to neuron diameter')
+        self.spatial_zoom_button.setToolTip('Center view on selected component, with zoom corresponding to neuron diameter')
         left_layout.addWidget(self.spatial_zoom_button)
         self.spatial_zoom_auto_checkbox = QCheckBox('Auto')
         self.spatial_zoom_auto_checkbox.setStyleSheet('margin-left: 8px;')        
-        self.spatial_zoom_auto_checkbox.setToolTip('Centers view on selected component, with zoom corresponding to neuron diameter')
+        self.spatial_zoom_auto_checkbox.setToolTip('Automatically centers view on selected component, with zoom corresponding to neuron diameter')
         left_layout.addWidget(self.spatial_zoom_auto_checkbox)
      
         head_label=QLabel('Contours:')
