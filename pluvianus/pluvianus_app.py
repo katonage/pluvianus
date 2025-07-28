@@ -1,4 +1,5 @@
 import sys
+
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QSplitter,QScrollArea, QCheckBox,QSlider,
     QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog, QSizePolicy,
@@ -28,15 +29,18 @@ import cv2
 import inspect
 import time
 
+print('Loading caiman...')   
 import caiman as cm # type: ignore
 from caiman.source_extraction import cnmf # type: ignore
 from caiman.utils.visualization import get_contours as caiman_get_contours # type: ignore
+print('Caiman loaded')
 
 try:
     from pluvianus import __version__
 except ImportError:
     __version__ = "0.0.0-dev"
 __date__ = time.strftime("%Y-%m-%d")
+
 
 class OptsWindow(QMainWindow):
     def __init__(self, opts, title='Options'):
@@ -2645,7 +2649,7 @@ class SpatialWidget(QWidget):
             self.contour_combo.setEnabled(False)
             return
         
-        print('Rendering spatial view, contours...')
+        #print('Rendering spatial view, contours...')
         self.spatial_view.disableAutoRange()
         self.spatial_view.clear()
         self.spatial_view.setBackground(None)
@@ -2989,3 +2993,4 @@ def run_gui():
 
 if __name__ == "__main__":
     run_gui()
+    

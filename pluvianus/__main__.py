@@ -1,4 +1,4 @@
-from pluvianus_app import run_gui
+from pluvianus.pluvianus_app import run_gui
 
 def main():
     run_gui()
