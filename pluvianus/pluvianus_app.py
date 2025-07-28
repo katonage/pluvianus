@@ -8,6 +8,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QAction, QColor
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QIcon
+from PySide6 import __version__ as PySide6_version
+
 import pyqtgraph as pg
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -16,6 +18,7 @@ from matplotlib.figure import Figure
 
 import json
 import os
+import subprocess
 import tempfile
 import numpy as np
 import glob
@@ -28,12 +31,12 @@ import cv2
 
 import inspect
 import time
+print(f'PySide6 {PySide6_version} loaded.')   
 
-print('Loading CaImAn...')   
 import caiman as cm # type: ignore
 from caiman.source_extraction import cnmf # type: ignore
 from caiman.utils.visualization import get_contours as caiman_get_contours # type: ignore
-print('CaImAn loaded successfully.')
+print(f'CaImAn { cm.__version__} loaded.')
 
 try:
     from pluvianus import __version__
@@ -1086,6 +1089,13 @@ class MainWindow(QMainWindow):
             output_data=nap.TsdFrame(t=time, d=data.T, metadata=metadict)
             output_data.save(str(data_filep))
             print(data_filep + ' saved.')
+            
+            try:
+                subprocess.Popen([sys.executable, '-m', 'pluvianus.pynapple_npz_viewer', str(data_filep)])
+                print('pynapple_npz_viewer launched.')
+            except Exception as e:
+                print(f'Could not launch pynapple_npz_viewer: {e}')
+            
         else:
             raise Exception('Unknown filetype: ' + filetype)
          

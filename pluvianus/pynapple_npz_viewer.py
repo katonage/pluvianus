@@ -17,7 +17,7 @@ def save_state(mypath=None):
     state = {'path': mypath}
     with open(filename, 'w') as f:
         json.dump(state, f)
-    
+
 def load_state():
     filename = 'pynapple_npz_viewer_state.json'
     filename = os.path.join(tempfile.gettempdir(), filename)
@@ -49,21 +49,35 @@ legend = win.addLegend(offset=(10, 10))
 colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
           '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 
-# Open a file dialog to choose one or more NPZ files
-data_files, _ = QFileDialog.getOpenFileNames(
-    central_widget,
-    'Open Pynapple NPZ containing Tsd or TsdFrame',
-    load_state(),
-    'NPZ files (*.npz)'
-)
-if not data_files:
-    sys.exit("No files selected.")
+# --- Argument handling
+data_files = []
+# Ignore the 0-th arg (script name)
+if len(sys.argv) > 1:
+    # All arguments after script name are assumed to be filenames
+    # (Supports more than one file)
+    data_files = sys.argv[1:]
+    # Check if all files exist
+    for f in data_files:
+        if not os.path.exists(f):
+            sys.exit(f"File not found: {f}")
+else:
+    # No CLI file given: use file dialog
+    data_files, _ = QFileDialog.getOpenFileNames(
+        central_widget,
+        'Open Pynapple NPZ containing Tsd or TsdFrame',
+        load_state(),
+        'NPZ files (*.npz)'
+    )
+    if not data_files:
+        sys.exit("No files selected.")
 
 color_index = 0
+file_titles = []
 for data_file in data_files:
     # Load the curve using pynapple
     curve = nap.load_file(data_file)
-    
+    file_titles.append(os.path.basename(data_file))
+
     # If the file contains a Tsd (time-series data) object
     if isinstance(curve, nap.Tsd):
         name = os.path.basename(data_file)
@@ -81,10 +95,21 @@ for data_file in data_files:
             color_index += 1
     else:
         raise Exception("Unsupported format: {}".format(type(curve)))
-    
-   
+
+# Save last used directory
 save_state(os.path.dirname(data_files[0]))
+
 win.setLabel('bottom', 'Time (s)')
+
+# Set window title to show opened file(s)
+if len(file_titles) == 1:
+    title = f"Pynapple NPZ viewer – {file_titles[0]}"
+else:
+    # Show all, or the first and count
+    title = f"Pynapple NPZ viewer – {', '.join(file_titles[:2])}"
+    if len(file_titles) > 2:
+        title += f" (+{len(file_titles)-2} more)"
+central_widget.setWindowTitle(title)
 
 central_widget.show()
 sys.exit(app.exec())
