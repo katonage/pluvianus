@@ -29,11 +29,11 @@ import cv2
 import inspect
 import time
 
-print('Loading caiman...')   
+print('Loading CaImAn...')   
 import caiman as cm # type: ignore
 from caiman.source_extraction import cnmf # type: ignore
 from caiman.utils.visualization import get_contours as caiman_get_contours # type: ignore
-print('Caiman loaded')
+print('CaImAn loaded successfully.')
 
 try:
     from pluvianus import __version__
@@ -732,20 +732,26 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Open URL", "Could not open URL: " + url.toString())
         
         
-    def open_file(self):        
-        if self.hdf5_file is None:
-            previ='.'
-        elif os.path.exists(self.hdf5_file):
-            previ=self.hdf5_file
-        elif os.path.exists(os.path.dirname(self.hdf5_file)):
-            previ=os.path.dirname(self.hdf5_file)
-        else:
-            previ='.'
+    def open_file(self, file_path=None): 
+        if file_path is None or file_path is False:       
+            if self.hdf5_file is None:
+                previ='.'
+            elif os.path.exists(self.hdf5_file):
+                previ=self.hdf5_file
+            elif os.path.exists(os.path.dirname(self.hdf5_file)):
+                previ=os.path.dirname(self.hdf5_file)
+            else:
+                previ='.'
         
-        filename, _ = QFileDialog.getOpenFileName(self, 'Open CaImAn HDF5 File', previ, 'HDF5 Files (*.hdf5)')
+            filename, _ = QFileDialog.getOpenFileName(self, 'Open CaImAn HDF5 File', previ, 'HDF5 Files (*.hdf5)')
 
-        if not filename:
-            return
+            if not filename:
+                return
+        else:
+            if not os.path.exists(file_path):
+                print('Error: File does not exist: ' + file_path)
+                return
+            filename = file_path
         
         print('Open file:', filename)
         progress_dialog = QProgressDialog('Opening file', None, 0, 100, self)
@@ -924,19 +930,26 @@ class MainWindow(QMainWindow):
         if filename:
             self.save_file(target_filename=filename, ignore_overwrite_warning=True)
 
-    def open_data_file(self):
+    def open_data_file(self, data_path=None):
         # Logic to open a data file
         if self.cnm is None:
+            print('No CaImAn file loaded. Cannot open data file.')
             return
-        suggested_file = None
-        for ext in ['.mmap', '.h5']:
-            previ=os.path.dirname(self.hdf5_file)
-            suggested_file = next((f for f in glob.glob(os.path.join(previ, '*' + ext)) if os.path.isfile(f)), None)
-            if suggested_file is not None:
-                break
-        if suggested_file is None:
-            suggested_file = os.path.dirname(self.hdf5_file)
-        data_file, _  = QFileDialog.getOpenFileName(self, 'Open Movement Corrected Data Array File (.mmap, .h5)', suggested_file, 'Memory mapped files (*.mmap);;Movie file (*.h5);;All Files (*)')
+        if data_path is None or data_path is False:        
+            suggested_file = None
+            for ext in ['.mmap', '.h5']:
+                previ=os.path.dirname(self.hdf5_file)
+                suggested_file = next((f for f in glob.glob(os.path.join(previ, '*' + ext)) if os.path.isfile(f)), None)
+                if suggested_file is not None:
+                    break
+            if suggested_file is None:
+                suggested_file = os.path.dirname(self.hdf5_file)
+            data_file, _  = QFileDialog.getOpenFileName(self, 'Open Movement Corrected Data Array File (.mmap, .h5)', suggested_file, 'Memory mapped files (*.mmap);;Movie file (*.h5);;All Files (*)')
+        else:
+            if not os.path.exists(data_path):
+                print(f'Error: Data path {data_path} does not exist.')
+                return
+            data_file = data_path   
         
         if not data_file:
             return
@@ -2975,7 +2988,7 @@ class SpatialWidget(QWidget):
         self.mainwindow.set_selected_component(index, 'spatial') 
         
 
-def run_gui():
+def run_gui(file_path=None, data_path=None):
     app = QApplication(sys.argv)
     try:
         with importlib.resources.as_file(importlib.resources.files("pluvianus").joinpath("pluvianus.ico")) as icon_path:
@@ -2989,6 +3002,12 @@ def run_gui():
     window.show()
     app.processEvents()
         
+    if file_path:
+        window.open_file(file_path)
+    if data_path:
+        window.open_data_file(data_path)  #if filepath was not loaded, it will be ignored
+
+
     sys.exit(app.exec())
 
 if __name__ == "__main__":
