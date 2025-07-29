@@ -11,6 +11,11 @@ A standalone GUI for browsing, editing, and manually verifying CaImAn results.
 - Visualization of extracted traces alongside original data
 - Currently supports only 2D movies
 
+##  License
+Pluvianus is distributed under the MIT License. If you use Pluvianus in your work, please cite our associated publication:
+
+TODO: reference
+
 ## Installation
 
 This package is intended for installation within an existing CaImAn conda environment.  

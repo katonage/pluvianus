@@ -665,7 +665,7 @@ class MainWindow(QMainWindow):
 
     def on_about_action(self):
         text = f"""
-            Pluvianus: CaImAn Result Rrowser
+            Pluvianus: CaImAn Result Browser
             A standalone GUI for browsing, editing, 
             and manually verifying CaImAn results..
 
