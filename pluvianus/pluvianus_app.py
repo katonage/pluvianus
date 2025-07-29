@@ -665,9 +665,9 @@ class MainWindow(QMainWindow):
 
     def on_about_action(self):
         text = f"""
-            Pluvianus: CaImAn result browser
-            A feature-rich browsing and editing GUI for manual  
-            data verification and acceptance of CaImAn results.
+            Pluvianus: CaImAn Result Rrowser
+            A standalone GUI for browsing, editing, 
+            and manually verifying CaImAn results..
 
             by Gergely Katona
 
@@ -2690,8 +2690,8 @@ class SpatialWidget(QWidget):
         plot_item.showAxes(True, showValues=(True, False, False, True))
         plot_item.showGrid(x=False, y=False)
         plot_item.setMenuEnabled(True)
-        #for item in {'Transforms', 'Downsample', 'Average','Alpha',  'Points'}:
-        #    plot_item.setContextMenuActionVisible(item, False)
+        for item in {'Transforms', 'Downsample', 'Average','Alpha',  'Points'}:
+            plot_item.setContextMenuActionVisible(item, False)
         plot_item.invertY(True)
         
         if self.mainwindow.data_array is None: 
