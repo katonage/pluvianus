@@ -1,13 +1,15 @@
 import sys
 
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QSplitter,QScrollArea, QCheckBox,QSlider,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QScrollArea, QCheckBox,QSlider,
     QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog, QSizePolicy,
     QPlainTextEdit, QDialog, QFrame
 )
-from PySide6.QtGui import QAction, QColor
+from PySide6.QtGui import QAction, QColor, QShortcut
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QIcon
+from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence
+from PySide6 import __version__ as PySide6_version
+
 import pyqtgraph as pg
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -16,6 +18,7 @@ from matplotlib.figure import Figure
 
 import json
 import os
+import subprocess
 import tempfile
 import numpy as np
 import glob
@@ -28,12 +31,14 @@ import cv2
 
 import inspect
 import time
+print(f'PySide6 {PySide6_version} loaded.')   
 
-print('Loading caiman...')   
 import caiman as cm # type: ignore
 from caiman.source_extraction import cnmf # type: ignore
 from caiman.utils.visualization import get_contours as caiman_get_contours # type: ignore
-print('Caiman loaded')
+print(f'CaImAn { cm.__version__} loaded.')
+
+from pluvianus.GripSplitter import GripSplitter
 
 try:
     from pluvianus import __version__
@@ -126,7 +131,7 @@ class BackgroundWindow(QMainWindow):
         
         # bottom row
         #bottom_row = QHBoxLayout()
-        bottom_row = QSplitter( childrenCollapsible=False)
+        bottom_row = GripSplitter( childrenCollapsible=False)
         bottom_row.setStyleSheet('QSplitter::handle { background-color: lightgray; }')
         
         self.temporal_widget = pg.PlotWidget()
@@ -226,14 +231,14 @@ class PlotWidgetWithRightAxis(pg.PlotWidget):
         right_axis.setLabel('axis2', color=self.RightColor)
         right_axis.setTextPen(pg.mkPen(self.RightColor))
         
+    
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.resize(1000, 700)
         pg.setConfigOptions(background='w', foreground='k')
         
-
-            
+        
         # Setup file menu with Open, Save, Save As
         file_menu = self.menuBar().addMenu('File')
         open_action = QAction('Open CaImAn HDF5 File...', self)
@@ -350,21 +355,30 @@ class MainWindow(QMainWindow):
         license_action.triggered.connect(self.on_license_action)
         source_action.triggered.connect(self.on_source_action)
         
+        #Keyboard shortcuts
+        shortcut_g = QShortcut(QKeySequence("G"), self) # g key for good
+        shortcut_g.activated.connect(lambda: self.set_component_assignment_manually('Good'))
+        shortcut_b = QShortcut(QKeySequence("B"), self) # b key for bad
+        shortcut_b.activated.connect(lambda: self.set_component_assignment_manually('Bad'))       
+        #shortcut_up = QShortcut(QKeySequence(Qt.Key_Up), self) # Up arrow
+        #shortcut_up.activated.connect(self.handle_up)
+        #shortcut_down = QShortcut(QKeySequence(Qt.Key_Down), self) # Down arrow
+        #shortcut_down.activated.connect(self.handle_down)
         
         self.resizeEvent = self.on_resize_figure
         self.closeEvent = self.on_mainwindow_closing
         
         # Create central widget and layout       
-        main_layout = QSplitter(Qt.Vertical)
+        main_layout = GripSplitter(Qt.Vertical)
         self.setCentralWidget(main_layout)
         main_layout.setStyleSheet('QSplitter::handle { background-color: lightgray; }')
         
         self.temporal_widget = TopWidget(self, self)
         main_layout.addWidget(self.temporal_widget)
         
-        bottom_layout_splitter = QSplitter( )
+        bottom_layout_splitter = GripSplitter()
         bottom_layout_splitter.setStyleSheet('QSplitter::handle { background-color: lightgray; }')
-        
+
         self.scatter_widget= ScatterWidget(self, self)
         bottom_layout_splitter.addWidget(self.scatter_widget)
         
@@ -732,20 +746,26 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Open URL", "Could not open URL: " + url.toString())
         
         
-    def open_file(self):        
-        if self.hdf5_file is None:
-            previ='.'
-        elif os.path.exists(self.hdf5_file):
-            previ=self.hdf5_file
-        elif os.path.exists(os.path.dirname(self.hdf5_file)):
-            previ=os.path.dirname(self.hdf5_file)
-        else:
-            previ='.'
+    def open_file(self, file_path=None): 
+        if file_path is None or file_path is False:       
+            if self.hdf5_file is None:
+                previ='.'
+            elif os.path.exists(self.hdf5_file):
+                previ=self.hdf5_file
+            elif os.path.exists(os.path.dirname(self.hdf5_file)):
+                previ=os.path.dirname(self.hdf5_file)
+            else:
+                previ='.'
         
-        filename, _ = QFileDialog.getOpenFileName(self, 'Open CaImAn HDF5 File', previ, 'HDF5 Files (*.hdf5)')
+            filename, _ = QFileDialog.getOpenFileName(self, 'Open CaImAn HDF5 File', previ, 'HDF5 Files (*.hdf5)')
 
-        if not filename:
-            return
+            if not filename:
+                return
+        else:
+            if not os.path.exists(file_path):
+                print('Error: File does not exist: ' + file_path)
+                return
+            filename = file_path
         
         print('Open file:', filename)
         progress_dialog = QProgressDialog('Opening file', None, 0, 100, self)
@@ -924,19 +944,26 @@ class MainWindow(QMainWindow):
         if filename:
             self.save_file(target_filename=filename, ignore_overwrite_warning=True)
 
-    def open_data_file(self):
+    def open_data_file(self, data_path=None):
         # Logic to open a data file
         if self.cnm is None:
+            print('No CaImAn file loaded. Cannot open data file.')
             return
-        suggested_file = None
-        for ext in ['.mmap', '.h5']:
-            previ=os.path.dirname(self.hdf5_file)
-            suggested_file = next((f for f in glob.glob(os.path.join(previ, '*' + ext)) if os.path.isfile(f)), None)
-            if suggested_file is not None:
-                break
-        if suggested_file is None:
-            suggested_file = os.path.dirname(self.hdf5_file)
-        data_file, _  = QFileDialog.getOpenFileName(self, 'Open Movement Corrected Data Array File (.mmap, .h5)', suggested_file, 'Memory mapped files (*.mmap);;Movie file (*.h5);;All Files (*)')
+        if data_path is None or data_path is False:        
+            suggested_file = None
+            for ext in ['.mmap', '.h5']:
+                previ=os.path.dirname(self.hdf5_file)
+                suggested_file = next((f for f in glob.glob(os.path.join(previ, '*' + ext)) if os.path.isfile(f)), None)
+                if suggested_file is not None:
+                    break
+            if suggested_file is None:
+                suggested_file = os.path.dirname(self.hdf5_file)
+            data_file, _  = QFileDialog.getOpenFileName(self, 'Open Movement Corrected Data Array File (.mmap, .h5)', suggested_file, 'Memory mapped files (*.mmap);;Movie file (*.h5);;All Files (*)')
+        else:
+            if not os.path.exists(data_path):
+                print(f'Error: Data path {data_path} does not exist.')
+                return
+            data_file = data_path   
         
         if not data_file:
             return
@@ -1073,6 +1100,13 @@ class MainWindow(QMainWindow):
             output_data=nap.TsdFrame(t=time, d=data.T, metadata=metadict)
             output_data.save(str(data_filep))
             print(data_filep + ' saved.')
+            
+            try:
+                subprocess.Popen([sys.executable, '-m', 'pluvianus.pynapple_npz_viewer', str(data_filep)])
+                print('pynapple_npz_viewer launched.')
+            except Exception as e:
+                print(f'Could not launch pynapple_npz_viewer: {e}')
+            
         else:
             raise Exception('Unknown filetype: ' + filetype)
          
@@ -1486,7 +1520,10 @@ class MainWindow(QMainWindow):
         vec=cnme.C[component_index, :]
         max_index = np.argmax(vec)
         
-        zoomwindow=self.decay_time*self.framerate*10
+        #zoomwindow=self.decay_time*self.framerate*10 # zooming
+        current_xrange = self.temporal_widget.temporal_view.viewRange()[0]
+        zoomwindow = (current_xrange[1] - current_xrange[0]) / 2 # just centering
+
         xrange=max_index-zoomwindow,max_index+zoomwindow
         self.temporal_widget.temporal_view.setRange(xRange=xrange, padding=0.0)    
         self.set_selected_frame(max_index)
@@ -1635,12 +1672,12 @@ class TopWidget(QWidget):
         self.range_to_all_button2.setToolTip("Set range of Y axis to match all component's tarces.")
         arr1_but.addWidget(self.range_to_all_button2)
         
-        self.temporal_zoom_button = QPushButton('Zoom')
-        self.temporal_zoom_button.setToolTip('Centers view on largest peak on C, with zoom corresponding to decay time')
+        self.temporal_zoom_button = QPushButton('Center')
+        self.temporal_zoom_button.setToolTip('Center view on the largest activity peak (max of C); scroll on the horizontal axis to adjust zoom')
         left_layout.addWidget(self.temporal_zoom_button)
         self.temporal_zoom_auto_checkbox = QCheckBox('Auto')
         self.temporal_zoom_auto_checkbox.setStyleSheet('margin-left: 8px;')   
-        self.temporal_zoom_auto_checkbox.setToolTip('Centers view on largest peak on C, with zoom corresponding to decay time')
+        self.temporal_zoom_auto_checkbox.setToolTip('Automatically centers view on the largest activity peak (max of C); scroll on the horizontal axis to adjust zoom')
         left_layout.addWidget(self.temporal_zoom_auto_checkbox)
         
         head_label=QLabel('Metrics:')
@@ -2071,7 +2108,7 @@ class ScatterWidget(QWidget):
         good_toggle_button.setFixedWidth(45)
         good_toggle_button.setCheckable(True)
         good_toggle_button.setContentsMargins(0, 0, 0, 0)
-        good_toggle_button.setToolTip('Accept component manually as good')
+        good_toggle_button.setToolTip('Accept component manually, assign as good. Keyboard: "g"')
         #good_toggle_button.setStyleSheet('background-color: white; color: green;')
         toggle_button_layout.addWidget(good_toggle_button)
         self.good_toggle_button = good_toggle_button
@@ -2080,7 +2117,7 @@ class ScatterWidget(QWidget):
         bad_toggle_button.setContentsMargins(0, 0, 0, 0)
         bad_toggle_button.setCheckable(True)
         bad_toggle_button.setStyleSheet('background-color: white; color: red;')
-        bad_toggle_button.setToolTip('Reject component manually to bad')
+        bad_toggle_button.setToolTip('Reject component manually, assign as bad. Keyboard: "b"')
         toggle_button_layout.addWidget(bad_toggle_button)
         self.bad_toggle_button = bad_toggle_button
         # Add the toggle button layout to the left layout
@@ -2515,11 +2552,11 @@ class SpatialWidget(QWidget):
         left_layout.addWidget(self.spatial_avr_spinbox)
         
         self.spatial_zoom_button = QPushButton('Zoom')
-        self.spatial_zoom_button.setToolTip('Centers view on selected component, with zoom corresponding to neuron diameter')
+        self.spatial_zoom_button.setToolTip('Center view on selected component, with zoom corresponding to neuron diameter')
         left_layout.addWidget(self.spatial_zoom_button)
         self.spatial_zoom_auto_checkbox = QCheckBox('Auto')
         self.spatial_zoom_auto_checkbox.setStyleSheet('margin-left: 8px;')        
-        self.spatial_zoom_auto_checkbox.setToolTip('Centers view on selected component, with zoom corresponding to neuron diameter')
+        self.spatial_zoom_auto_checkbox.setToolTip('Automatically centers view on selected component, with zoom corresponding to neuron diameter')
         left_layout.addWidget(self.spatial_zoom_auto_checkbox)
      
         head_label=QLabel('Contours:')
@@ -2975,7 +3012,7 @@ class SpatialWidget(QWidget):
         self.mainwindow.set_selected_component(index, 'spatial') 
         
 
-def run_gui():
+def run_gui(file_path=None, data_path=None):
     app = QApplication(sys.argv)
     try:
         with importlib.resources.as_file(importlib.resources.files("pluvianus").joinpath("pluvianus.ico")) as icon_path:
@@ -2989,6 +3026,12 @@ def run_gui():
     window.show()
     app.processEvents()
         
+    if file_path:
+        window.open_file(file_path)
+    if data_path:
+        window.open_data_file(data_path)  #if filepath was not loaded, it will be ignored
+
+
     sys.exit(app.exec())
 
 if __name__ == "__main__":
