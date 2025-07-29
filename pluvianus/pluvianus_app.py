@@ -1,7 +1,7 @@
 import sys
 
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QSplitter,QScrollArea, QCheckBox,QSlider,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QScrollArea, QCheckBox,QSlider,
     QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog, QSizePolicy,
     QPlainTextEdit, QDialog, QFrame
 )
@@ -37,6 +37,8 @@ import caiman as cm # type: ignore
 from caiman.source_extraction import cnmf # type: ignore
 from caiman.utils.visualization import get_contours as caiman_get_contours # type: ignore
 print(f'CaImAn { cm.__version__} loaded.')
+
+from pluvianus.GripSplitter import GripSplitter
 
 try:
     from pluvianus import __version__
@@ -129,7 +131,7 @@ class BackgroundWindow(QMainWindow):
         
         # bottom row
         #bottom_row = QHBoxLayout()
-        bottom_row = QSplitter( childrenCollapsible=False)
+        bottom_row = GripSplitter( childrenCollapsible=False)
         bottom_row.setStyleSheet('QSplitter::handle { background-color: lightgray; }')
         
         self.temporal_widget = pg.PlotWidget()
@@ -229,14 +231,14 @@ class PlotWidgetWithRightAxis(pg.PlotWidget):
         right_axis.setLabel('axis2', color=self.RightColor)
         right_axis.setTextPen(pg.mkPen(self.RightColor))
         
+    
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.resize(1000, 700)
         pg.setConfigOptions(background='w', foreground='k')
         
-
-            
+        
         # Setup file menu with Open, Save, Save As
         file_menu = self.menuBar().addMenu('File')
         open_action = QAction('Open CaImAn HDF5 File...', self)
@@ -358,16 +360,16 @@ class MainWindow(QMainWindow):
         self.closeEvent = self.on_mainwindow_closing
         
         # Create central widget and layout       
-        main_layout = QSplitter(Qt.Vertical)
+        main_layout = GripSplitter(Qt.Vertical)
         self.setCentralWidget(main_layout)
         main_layout.setStyleSheet('QSplitter::handle { background-color: lightgray; }')
         
         self.temporal_widget = TopWidget(self, self)
         main_layout.addWidget(self.temporal_widget)
         
-        bottom_layout_splitter = QSplitter( )
+        bottom_layout_splitter = GripSplitter()
         bottom_layout_splitter.setStyleSheet('QSplitter::handle { background-color: lightgray; }')
-        
+
         self.scatter_widget= ScatterWidget(self, self)
         bottom_layout_splitter.addWidget(self.scatter_widget)
         
