@@ -46,4 +46,4 @@ pluvianus = ["*.ico", "*.png"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-exclude = ["pluvianus.try"] # we will delete the try folder before publication
+
