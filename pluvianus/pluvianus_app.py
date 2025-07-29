@@ -5,9 +5,9 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog, QSizePolicy,
     QPlainTextEdit, QDialog, QFrame
 )
-from PySide6.QtGui import QAction, QColor
+from PySide6.QtGui import QAction, QColor, QShortcut
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QIcon
+from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence
 from PySide6 import __version__ as PySide6_version
 
 import pyqtgraph as pg
@@ -355,6 +355,15 @@ class MainWindow(QMainWindow):
         license_action.triggered.connect(self.on_license_action)
         source_action.triggered.connect(self.on_source_action)
         
+        #Keyboard shortcuts
+        shortcut_g = QShortcut(QKeySequence("G"), self) # g key for good
+        shortcut_g.activated.connect(lambda: self.set_component_assignment_manually('Good'))
+        shortcut_b = QShortcut(QKeySequence("B"), self) # b key for bad
+        shortcut_b.activated.connect(lambda: self.set_component_assignment_manually('Bad'))       
+        #shortcut_up = QShortcut(QKeySequence(Qt.Key_Up), self) # Up arrow
+        #shortcut_up.activated.connect(self.handle_up)
+        #shortcut_down = QShortcut(QKeySequence(Qt.Key_Down), self) # Down arrow
+        #shortcut_down.activated.connect(self.handle_down)
         
         self.resizeEvent = self.on_resize_figure
         self.closeEvent = self.on_mainwindow_closing
@@ -2099,7 +2108,7 @@ class ScatterWidget(QWidget):
         good_toggle_button.setFixedWidth(45)
         good_toggle_button.setCheckable(True)
         good_toggle_button.setContentsMargins(0, 0, 0, 0)
-        good_toggle_button.setToolTip('Accept component manually as good')
+        good_toggle_button.setToolTip('Accept component manually, assign as good. Keyboard: "g"')
         #good_toggle_button.setStyleSheet('background-color: white; color: green;')
         toggle_button_layout.addWidget(good_toggle_button)
         self.good_toggle_button = good_toggle_button
@@ -2108,7 +2117,7 @@ class ScatterWidget(QWidget):
         bad_toggle_button.setContentsMargins(0, 0, 0, 0)
         bad_toggle_button.setCheckable(True)
         bad_toggle_button.setStyleSheet('background-color: white; color: red;')
-        bad_toggle_button.setToolTip('Reject component manually to bad')
+        bad_toggle_button.setToolTip('Reject component manually, assign as bad. Keyboard: "b"')
         toggle_button_layout.addWidget(bad_toggle_button)
         self.bad_toggle_button = bad_toggle_button
         # Add the toggle button layout to the left layout
