@@ -1,4 +1,4 @@
-# Pluvianus: CaImAn Result Browser
+# Pluvianus: CaImAn Result Browser 
 <img src="https://github.com/katonage/pluvianus/blob/main/pluvianus%20image.png" width="400" align="right">
 A standalone GUI for browsing, editing, and manually verifying CaImAn results.
 
