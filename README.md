@@ -58,7 +58,7 @@ You can also launch Pluvianus directly with the CaImAn .hdf5 result file and .mm
    python -m pluvianus --file results.hdf5 --data movie.mmap` 
    ```
 ### Opening Demo Files
-* Run all cells in the [demo_pipeline.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_pipeline.ipynb) (you can also find a copy of this file within your already installed caiman environment).
+* Run all cells in the CaImAn [demo_pipeline.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_pipeline.ipynb) (you can also find a copy of this file within your already installed CaImAn environment).
 * This will create the necessary two files in the `caiman_data\temp` folder:
   * `demo_pipeline_results.hdf5` result file of the CNMF algorythm
   * `Sue_2x_3000_40_-46_els__d1_170_d2_170_d3_1_order_F_frames_3000.mmap` movement corected memory mapped movie datafile.
