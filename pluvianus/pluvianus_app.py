@@ -149,7 +149,7 @@ class BackgroundWindow(QMainWindow):
         # Basic steps to create a false color image with color bar:
         self.spatial_image = pg.ImageItem()
         self.spatial_widget.addItem( self.spatial_image )
-        self.colorbar_item=self.spatial_widget.getPlotItem().addColorBar( self.spatial_image, colorMap='viridis', rounding=0.00000000001) # , interactive=False)
+        self.colorbar_item=self.spatial_widget.getPlotItem().addColorBar(self.spatial_image, colorMap='viridis', rounding=0.00000000001) # , interactive=False)
         self.spatial_widget.setAspectLocked(True)
         self.spatial_widget.getPlotItem().showAxes(True, showValues=(True,False,False,True) )
         for side in ( 'top', 'right'):
@@ -2320,7 +2320,7 @@ class ScatterWidget(QWidget):
     def recreate_scatterplot(self):
         if self.mainwindow.cnm is None or self.mainwindow.cnm.estimates.r_values is None:
             self.plt_figure.clf()
-            text='No evaluated components.Open data array to compute component metrics.'
+            text='No evaluated components. Open data array to compute component metrics.'
             self.plt_ax = self.plt_figure.add_subplot(111)
             self.plt_ax.text(0.5, 0.5, text, transform=self.plt_ax.transAxes, ha='center', va='center', size=7.8, color='k')
             self.plt_figure.patch.set_facecolor((200.0/255, 200.0/255, 210.0/255, 127.0/255))
@@ -2523,6 +2523,11 @@ class SpatialWidget(QWidget):
         self.spatial_zoom_auto_checkbox.setToolTip('Automatically centers view on selected component, with zoom corresponding to neuron diameter')
         left_layout.addWidget(self.spatial_zoom_auto_checkbox)
      
+        self.colorbar_reset_button = QPushButton('Reset Colorbar')
+        self.colorbar_reset_button.setToolTip('Reset colorbar to min and max of displayed data')
+        self.colorbar_reset_button.setEnabled(False)
+        left_layout.addWidget(self.colorbar_reset_button) # Colorbar reset button initialized
+
         head_label=QLabel('Contours:')
         head_label.setStyleSheet('font-weight: bold;')
         left_layout.addWidget(head_label)
@@ -2530,7 +2535,7 @@ class SpatialWidget(QWidget):
         self.contour_combo = QComboBox()
         self.contour_combo.addItem('--')
         self.contour_combo.setToolTip('Select contour groups to draw')
-        left_layout.addWidget(self.contour_combo)  
+        left_layout.addWidget(self.contour_combo)
         
         self.data_info_label=QLabel('')
         self.data_info_label.setWordWrap(True)
@@ -2552,6 +2557,7 @@ class SpatialWidget(QWidget):
         self.contour_combo.currentIndexChanged.connect(self.on_contour_combo_changed)
         self.spatial_avr_spinbox.valueChanged.connect(self.on_spatial_avr_spinbox_changed)
         self.spatial_view.sceneObj.sigMouseMoved.connect(self.on_mouseMoveEvent)
+        self.colorbar_reset_button.clicked.connect(self.on_colorbar_reset_button_clicked)
  
     
     def on_mouseMoveEvent(self, event):
@@ -2629,6 +2635,9 @@ class SpatialWidget(QWidget):
     def on_channel_combo_changed(self, index):
         #called on change of channel selector combo box
         self.update_spatial_view(setLUT=True)
+
+    def on_colorbar_reset_button_clicked(self):
+        self.update_spatial_view_image(setLUT=True)
         
     def perform_spatial_zoom_on_component(self, index):
         zoomwindow=self.mainwindow.neuron_diam*1.5
@@ -2958,7 +2967,10 @@ class SpatialWidget(QWidget):
         if setLUT:
             # Update colorbar limits explicitly
             min_val, max_val = np.min(image_data), np.max(image_data)
-            self.colorbar_item.setLevels(values=[min_val, max_val])       
+            self.colorbar_item.setLevels(values=[min_val, max_val])
+
+        # Colorbar reset button logic
+        self.colorbar_reset_button.setEnabled(True)  
     
         return ctitle
     
