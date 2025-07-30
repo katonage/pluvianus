@@ -357,11 +357,11 @@ class MainWindow(QMainWindow):
         shortcut_g.activated.connect(lambda: self.set_component_assignment_manually('Good'))
         shortcut_b = QShortcut(QKeySequence("B"), self) # b key for bad
         shortcut_b.activated.connect(lambda: self.set_component_assignment_manually('Bad'))       
-        #shortcut_up = QShortcut(QKeySequence(Qt.Key_Up), self) # Up arrow
-        #shortcut_up.activated.connect(self.handle_up)
-        #shortcut_down = QShortcut(QKeySequence(Qt.Key_Down), self) # Down arrow
-        #shortcut_down.activated.connect(self.handle_down)
-        
+        shortcut_up = QShortcut(QKeySequence(Qt.Key_Up), self) # Up arrow
+        shortcut_up.activated.connect(lambda: self.set_nav_component_pressed('next'))
+        shortcut_down = QShortcut(QKeySequence(Qt.Key_Down), self) # Down arrow
+        shortcut_down.activated.connect(lambda: self.set_nav_component_pressed('prev'))
+
         self.resizeEvent = self.on_resize_figure
         self.closeEvent = self.on_mainwindow_closing
         
@@ -396,7 +396,8 @@ class MainWindow(QMainWindow):
         self.num_frames = 0  # number of frames in movie
         self.selected_frame = 0 # index of selected frame
         self.frame_window = 0 # temporal window of displaying movie frames (half window, in frames)
-        self.limit='All' # restriction on selecting components according to their good/bad assignment
+        self.order='index (All)' # order of components in combo box
+        self.order_indexes = [] # indexes of components in order
         self.manual_acceptance_assigment_has_been_made = False # flag for storing if manual component assignment has been made
         self.data_file = '' # file name of data array file (mmap)
         self.data_array = None # data array if loaded
@@ -418,103 +419,77 @@ class MainWindow(QMainWindow):
         self.load_state()
         self.update_all()
     
+    def set_nav_order_by(self, text):
+        self.order = text
+        if text == 'index (All)':
+            self.order_indexes = np.arange(self.numcomps)
+        elif text == 'index (Good)':
+            self.order_indexes = self.cnm.estimates.idx_components
+        elif text == 'index (Bad)':
+            self.order_indexes = self.cnm.estimates.idx_components_bad
+        elif text == 'SNR':
+            self.order_indexes = np.argsort(self.cnm.estimates.SNR_comp)#[::-1]
+        elif text == 'R value':
+            self.order_indexes = np.argsort(self.cnm.estimates.r_values)#[::-1]
+        elif text == 'CNN':
+            self.order_indexes = np.argsort(self.cnm.estimates.cnn_preds)#[::-1]
+        elif text == 'Compound':
+            compound_metrics=np.log10(self.cnm.estimates.SNR_comp)/3 + self.cnm.estimates.r_values * self.cnm.estimates.cnn_preds
+            self.order_indexes = np.argsort(compound_metrics)#[::-1]
+        else:
+            raise ValueError(f'Invalid order: {text}')
+        
+        current_component=self.selected_component
+        if current_component not in self.order_indexes:
+            idx = (np.abs(self.order_indexes - current_component)).argmin()
+            current_component = self.order_indexes[idx]
+                    
+        self.set_selected_component(current_component, 'direct')
+        self.temporal_widget.update_nav_order_by()
+        
+    def set_nav_component_pressed(self, direction):
+        '''
+        Navigate to the next or previous component in the order defined by the combo box.
+        Parameters:  direction : str  'next' or 'prev' to navigate to the next or previous component.
+        '''
+        if self.cnm is None:
+            return
+        
+        idx = (np.abs(self.order_indexes - self.selected_component)).argmin()            
+        if direction == 'next':
+            idx=idx+1
+        elif direction == 'prev':
+            idx=idx-1
+        idx = max(0, min(idx, len(self.order_indexes)-1))
+        self.set_selected_component(self.order_indexes[idx], 'direct')
+        
     def set_selected_component(self, value, method):
         '''
-            The component number is checked against the type of components that are selected in the combo box.
+            Component number is set. combo is reset if setting outside of good/bad. method is disregarded.
         '''
-
-        def nearest_in_dir(array, previous, new):
-            direction = np.sign(new - previous)
-            if direction == 0:
-                idx = (np.abs(array - new)).argmin()
-            elif direction == 1:
-                idx = np.where(array > new)[0][0] if len(np.where(array > new)[0]) > 0 else -1
-            else: # direction == -1
-                idx = np.where(array < new)[0][-1] if len(np.where(array < new)[0]) > 0 else 0
-            return array[idx]
-        
-        def valid_component_select(self, value):
-            '''
-            Valid component select. This function is called when the component number is changed from the spinbox.
-            
-            Parameters
-            ----------
-            value : int
-                The new value of the component.
-
-            Returns
-            -------
-            None, sets the self.selected_component to the new value.
-            '''
-            
-            if self.cnm is None or self.cnm.estimates.idx_components is None:
-                self.limit = 'All'
-                return value
-            
-            cnme=self.cnm.estimates
-            previous_value = self.selected_component
-            if self.limit == 'All':
-                return value
-            elif self.limit == 'Good':                      
-                if value in cnme.idx_components:
-                    return value
-                else:
-                    return nearest_in_dir(cnme.idx_components, previous_value, value)
-            elif self.limit == 'Bad':
-                if value in cnme.idx_components_bad:
-                    return value
-                else:
-                    return nearest_in_dir(cnme.idx_components_bad, previous_value, value)
-            #never reach here
         if self.cnm is None:
             return
         #print('set_selected_component', value, method)
-        cnme=self.cnm.estimates
         if self.cnm is None:
             value = min(self.numcomps-1, value)
+        if method == 'spinbox': 
+            method = 'direct' 
+        if method == 'spatial':
+            method = 'direct'
+        if method == 'scatter':
+            method = 'direct'
+            
         if method == 'direct':
-            if self.limit == 'All' or cnme.idx_components is None:
-                self.selected_component = value
-                self.limit = 'All'
-            elif self.limit == 'Good':
-                self.selected_component =  nearest_in_dir(cnme.idx_components, value, value)
-            elif self.limit == 'Bad':
-                self.selected_component =  nearest_in_dir(cnme.idx_components_bad, value, value)           
-        elif method == 'scatter':
-            if self.limit == 'All' or cnme.idx_components is None:
-                self.selected_component = value
-            else:
-                xyz = np.array([cnme.cnn_preds, cnme.r_values, np.log(cnme.SNR_comp)]).T
-                current=xyz[value]
-                if self.limit == 'Good':
-                    idxs=cnme.idx_components
-                elif self.limit == 'Bad':
-                    idxs=cnme.idx_components_bad
-                xyz = xyz[idxs]
-                dist = np.linalg.norm(xyz - current, axis=1)
-                idx = np.argmin(dist)
-                self.selected_component = idxs[idx]
-        elif method == 'spinbox':
-            self.selected_component = valid_component_select(self, value)
-        elif method == 'spatial':
-            if self.limit == 'All' or cnme.idx_components is None or cnme.coordinates is None:
-                self.selected_component = value
-            else:
-                xyz = self.component_centers #is Nx2 shape
-                current = xyz[value,:]
-                if self.limit == 'Good':
-                    idxs = cnme.idx_components
-                elif self.limit == 'Bad':
-                    idxs = cnme.idx_components_bad
-                xyz = xyz[idxs,:]
-                dist = np.linalg.norm(xyz - current, axis=1)
-                idx = np.argmin(dist)
-                self.selected_component = idxs[idx]
+            if value not in self.order_indexes:
+                self.order= 'index (All)'
+                self.set_nav_order_by(self.order)
+            self.selected_component = value 
         else:
             raise ValueError(f'Invalid method: {method}')
         
         #update
         self.temporal_widget.update_component_spinbox(self.selected_component)
+        self.temporal_widget.update_nav_button_enabled()
         self.scatter_widget.update_selected_component_on_scatterplot(self.selected_component)
         self.temporal_widget.update_temporal_view()
         self.spatial_widget.update_spatial_view()
@@ -690,9 +665,9 @@ class MainWindow(QMainWindow):
 
     def on_about_action(self):
         text = f"""
-            Pluvianus: CaImAn result browser
-            A feature-rich browsing and editing GUI for manual  
-            data verification and acceptance of CaImAn results.
+            Pluvianus: CaImAn Result Browser
+            A standalone GUI for browsing, editing, 
+            and manually verifying CaImAn results..
 
             by Gergely Katona
 
@@ -853,7 +828,7 @@ class MainWindow(QMainWindow):
         else:
             self.selected_component=min(self.selected_component, self.numcomps-1)
         
-        self.temporal_widget.update_limit_component_type()
+        self.temporal_widget.update_nav_order_by()
         self.temporal_widget.update_array_selector()
         self.temporal_widget.update_array_selector(right_axis=True)
         self.spatial_widget.recreate_spatial_view()
@@ -911,7 +886,8 @@ class MainWindow(QMainWindow):
         self.update_title()
         self.temporal_widget.recreate_temporal_view()
         self.scatter_widget.recreate_scatterplot()
-        self.set_selected_component(self.selected_component, 'direct')           
+        self.set_nav_order_by(self.order)
+        #self.set_selected_component(self.selected_component, 'direct')           
 
     def save_file(self, ignore_overwrite_warning=False, target_filename=None):
         if target_filename is None:
@@ -1556,15 +1532,32 @@ class TopWidget(QWidget):
         self.component_spinbox.setFixedWidth(90)
         left_layout.addWidget(self.component_spinbox)
         
-        left_layout.addWidget(QLabel('Limit to:'))
-        self.limit_component_type_combo = QComboBox()
-        self.limit_component_type_combo.setFixedWidth(90)
-        self.limit_component_type_combo.addItem('All')
-        self.limit_component_type_combo.addItem('Good')
-        self.limit_component_type_combo.addItem('Bad')
-        self.limit_component_type_combo.setToolTip('Limit selection to component group')
-        left_layout.addWidget(self.limit_component_type_combo)
+        left_layout.addWidget(QLabel('Order by:'))
+        self.nav_order_by_combo = QComboBox()
+        self.nav_order_by_combo.setFixedWidth(90)
+        self.nav_order_by_combo.addItem('index (All)')
+        self.nav_order_by_combo.addItem('index (Good)')
+        self.nav_order_by_combo.addItem('index (Bad)')
+        self.nav_order_by_combo.addItem('Compound')
+        self.nav_order_by_combo.addItem('SNR')
+        self.nav_order_by_combo.addItem('R value')
+        self.nav_order_by_combo.addItem('CNN')
+        self.nav_order_by_combo.setToolTip('Stepping components according to this metric. Limit selection to component group')
+        left_layout.addWidget(self.nav_order_by_combo)
         
+        nav_layout = QHBoxLayout()
+        self.nav_prev_button = QPushButton("Down")
+        self.nav_prev_button.setToolTip('Go to previous/smaller component according to the selected metrics. Key: Down Arrow')
+        self.nav_prev_button.setFixedWidth(45)
+        self.nav_prev_button.setContentsMargins(0, 0, 0, 0)        
+        self.nav_next_button = QPushButton("Up")
+        self.nav_next_button.setToolTip('Go to next/larger component according to the selected metrics. Key: Up Arrow')
+        self.nav_next_button.setFixedWidth(45)
+        self.nav_next_button.setContentsMargins(0, 0, 0, 0)        
+        nav_layout.addWidget(self.nav_prev_button)
+        nav_layout.addWidget(self.nav_next_button)
+        left_layout.addLayout(nav_layout)
+
         head_label=QLabel('Plot:')
         head_label.setStyleSheet('font-weight: bold; margin-top: 10px;')
         left_layout.addWidget(head_label)
@@ -1705,7 +1698,9 @@ class TopWidget(QWidget):
         
         #event hadlers
         self.component_spinbox.valueChanged.connect(self.on_component_spinbox_changed)
-        self.limit_component_type_combo.currentTextChanged.connect(self.on_limit_component_type_changed)
+        self.nav_order_by_combo.currentTextChanged.connect(self.mainwindow.set_nav_order_by)
+        self.nav_next_button.clicked.connect(lambda: self.mainwindow.set_nav_component_pressed('next'))
+        self.nav_prev_button.clicked.connect(lambda: self.mainwindow.set_nav_component_pressed('prev'))
         self.rlavr_spinbox.valueChanged.connect(self.on_rlavr_spinbox_changed)
         self.array_selector.currentTextChanged.connect(self.on_array_selector_changed)  
         self.rlavr_spinbox2.valueChanged.connect(self.on_rlavr_spinbox_changed)
@@ -1751,6 +1746,7 @@ class TopWidget(QWidget):
         self.update_temporal_view()
         
     def update_component_spinbox(self, value):
+        #print(f'update_component_spinbox called with value {value}')
         self.component_spinbox.blockSignals(True)
         if self.mainwindow.cnm is None:
             self.component_spinbox.setEnabled(False)
@@ -1761,26 +1757,41 @@ class TopWidget(QWidget):
             self.component_spinbox.setValue(value)
         self.component_spinbox.blockSignals(False)
         
-    def update_limit_component_type(self):
-        value=self.mainwindow.limit
+    def update_nav_order_by(self):
+        #print(f'update_nav_order_by called')
+        value=self.mainwindow.order
         cnm=self.mainwindow.cnm
-        self.limit_component_type_combo.blockSignals(True)
+        self.nav_order_by_combo.blockSignals(True)
         if cnm is None:
-            self.limit_component_type_combo.setEnabled(False)
+            self.nav_order_by_combo.setEnabled(False)
         elif cnm.estimates.idx_components is None:
-            self.limit_component_type_combo.setEnabled(False)
-            self.limit_component_type_combo.setCurrentText('All')
+            self.nav_order_by_combo.setEnabled(False)
+            self.nav_order_by_combo.setCurrentText('index (All)')
         else:
-            self.limit_component_type_combo.setEnabled(True)
-            self.limit_component_type_combo.setCurrentText(value)
-        self.limit_component_type_combo.blockSignals(False)
-        
+            self.nav_order_by_combo.setEnabled(True)
+            self.nav_order_by_combo.setCurrentText(value)
+        self.nav_order_by_combo.blockSignals(False)
+
+    def update_nav_button_enabled(self):
+        indexes=self.mainwindow.order_indexes 
+        if self.mainwindow.cnm is None or indexes is None or len(indexes) == 0:
+            self.nav_prev_button.setEnabled(False)
+            self.nav_next_button.setEnabled(False)
+            return
+              
+        current_component=self.mainwindow.selected_component
+        idx = (np.abs(indexes - current_component)).argmin()
+        if idx == 0:
+            self.nav_prev_button.setEnabled(False)
+        else:
+            self.nav_prev_button.setEnabled(True)
+        if idx == len(indexes) - 1:
+            self.nav_next_button.setEnabled(False)
+        else:
+            self.nav_next_button.setEnabled(True)
+
     def on_component_spinbox_changed(self, value):
         self.mainwindow.set_selected_component(value, 'spinbox')
-
-    def on_limit_component_type_changed(self, text):
-        self.mainwindow.limit = text
-        self.mainwindow.set_selected_component(self.mainwindow.selected_component, 'direct')
     
     def on_temporal_zoom_auto_changed(self, state):
         if self.temporal_zoom_auto_checkbox.isChecked():
@@ -1849,6 +1860,7 @@ class TopWidget(QWidget):
             self.temporal_view.getPlotItem().showAxes(False)
             self.temporal_view.setBackground(QColor(200, 200, 210, 127))
             self.temporal_view.getPlotItem().setMenuEnabled(False)
+            self.update_nav_button_enabled()
             return
         
         self.temporal_view.getPlotItem().getViewBox().setMouseEnabled(x=True, y=True)
@@ -1876,6 +1888,7 @@ class TopWidget(QWidget):
         
         self.mainwindow.scatter_widget.update_totals()
         self.update_temporal_view()
+        
 
     def _get_trace(self, index, array_text, rlavr_width):    
             if array_text == 'C':
@@ -2686,8 +2699,8 @@ class SpatialWidget(QWidget):
         plot_item.showAxes(True, showValues=(True, False, False, True))
         plot_item.showGrid(x=False, y=False)
         plot_item.setMenuEnabled(True)
-        #for item in {'Transforms', 'Downsample', 'Average','Alpha',  'Points'}:
-        #    plot_item.setContextMenuActionVisible(item, False)
+        for item in {'Transforms', 'Downsample', 'Average','Alpha',  'Points'}:
+            plot_item.setContextMenuActionVisible(item, False)
         plot_item.invertY(True)
         
         if self.mainwindow.data_array is None: 
@@ -2845,17 +2858,7 @@ class SpatialWidget(QWidget):
             raise ValueError(f'Invalid contour mode: {contour_mode}')
         
         #setting component contour graphics properties
-        if  cnme.idx_components is not None:
-            if self.mainwindow.limit == 'All':
-                clickarray=[True]*self.mainwindow.numcomps
-            elif self.mainwindow.limit == 'Good':
-                clickarray=np.zeros(self.mainwindow.numcomps, dtype=bool)
-                clickarray[cnme.idx_components]=True
-            else:
-                clickarray=np.zeros(self.mainwindow.numcomps, dtype=bool)
-                clickarray[cnme.idx_components_bad]=True
-        else:
-            clickarray=[True]*self.mainwindow.numcomps
+        clickarray=[True]*self.mainwindow.numcomps # we may disable clickability of some components here
         for idx_to_plot in range(self.mainwindow.numcomps):
             if idx_to_plot==component_idx:
                 peny=self.selectedpen
@@ -2976,13 +2979,6 @@ class SpatialWidget(QWidget):
     
     def on_contour_click(self, ev):
         index = int(ev.name())
-        if self.mainwindow.cnm.estimates.idx_components is not None:
-            if self.mainwindow.limit == 'Good':
-                if index in self.mainwindow.cnm.estimates.idx_components_bad:
-                    return
-            elif self.mainwindow.limit == 'Bad':
-                if index in self.mainwindow.cnm.estimates.idx_components:
-                    return
         self.mainwindow.set_selected_component(index, 'spatial') 
         
 
