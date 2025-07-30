@@ -114,7 +114,7 @@ Timeline Navigation: <br>
 Scroll through time using the slider below the plot (shows both frame number and absolute time). Right of the timeline, specify the time window for temporal averaging in the Spatial Widget.
 
 ### Scatter Widget
-A 3D scatter plot displays all components, using three evaluation metrics as axes. Clicking on a point selects it the Temporal and Spatial Widgets. Good components are displayed as green points, whereas bad components are displayed as red points. 
+A 3D scatter plot displays all components, using three evaluation metrics as axes. Clicking on a point selects it on the Temporal and Spatial Widgets. Good components are displayed as green points, whereas bad components are displayed as red points.
 
 In the Assignemnt section, use "Good" and "Bad" to manually accept or reject the component, regardless of evaluation thresholds. Keyboard shortcuts: `g` for Good, `b` for Bad.<br>
 In the Thresholds section set two thresholds ("lowest" and "min") per metric. A component is classified as good if it exceeds all "lowest" thresholds and at least one "min" threshold, unless manually overridden as above. Press "Evaluate" to apply the current thresholds (uses CaImAn's `filter_components()`).
@@ -157,7 +157,7 @@ By right clicking use the context menu to export it to various formats.
 * Load/Save Mean/Max/Std/Local correlations images: these images can be computed from the data and displayed in the Spatial view. The file format is `.npy`. 
 
 ### Compute menu
-Performs various calculations on the data. Calculations that invoke CaImAn functions inherit their parameters from the currently opened HDF5 file; you can view these parameters under View → CaImAn Parameters.
+Performs various calculations on the data. Calculations that invoke CaImAn functions inherit their parameters from the currently opened `.hdf5` file; you can view these parameters under View → CaImAn Parameters.
 * Detrend ΔF/F: Calculates detrended relative fluorescence change. You can view this by selecting `F_dff` under "Plot" in the Temporal Widget. Calls the `detrend_df_f()` function.
 * Compute Component Metrics: (Re)computes the three metrics used for component evaluation. Calls the `evaluate_components()` function. 
 * Compute Projections: computes the temporal Mean, Max and STD images. You can also save them to `.npy` files in the File menu.
