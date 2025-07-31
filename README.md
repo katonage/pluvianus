@@ -132,7 +132,7 @@ Under "Display" select the quantity to display (at the selected timepoint):
 * `RCB`: Reconstructed background
 * `B0`, `B1`: Background components
 
-"Zoom" centers the view on the selected component, with zoom corresponding to estimated neuron diameter. "Auto" performs this automatically when a new component is selected.<br>
+"Zoom" centers the view on the selected component, with zoom corresponding to estimated neuron diameter. "Auto" will automatically center and zoom when a new component is selected. <br>
 
 Under "Contours" choose which component outlines are visible:
 * `All`: All components

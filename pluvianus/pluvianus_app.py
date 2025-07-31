@@ -1,44 +1,38 @@
+import glob
+import importlib
+import inspect
+import json
+import os
+import subprocess
 import sys
+import tempfile
+import time
+import uuid
 
+import caiman as cm # type: ignore
+from caiman.source_extraction import cnmf # type: ignore
+from caiman.utils.visualization import get_contours as caiman_get_contours # type: ignore
+import cv2
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
+import numpy as np
+import pynapple as nap
+import pyqtgraph as pg
+from PySide6 import __version__ as PySide6_version
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QKeySequence, QShortcut 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QScrollArea, QCheckBox,QSlider,
     QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog, QSizePolicy,
     QPlainTextEdit, QDialog, QFrame
 )
-from PySide6.QtGui import QAction, QColor, QShortcut
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence
-from PySide6 import __version__ as PySide6_version
-
-import pyqtgraph as pg
-
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
-
-import json
-import os
-import subprocess
-import tempfile
-import numpy as np
-import glob
-import uuid
-import importlib
-
-import pynapple as nap
 from scipy.signal.windows import gaussian
-import cv2
-
-import inspect
-import time
-print(f'PySide6 {PySide6_version} loaded.')   
-
-import caiman as cm # type: ignore
-from caiman.source_extraction import cnmf # type: ignore
-from caiman.utils.visualization import get_contours as caiman_get_contours # type: ignore
-print(f'CaImAn { cm.__version__} loaded.')
 
 from pluvianus.GripSplitter import GripSplitter
+
+print(f'PySide6 {PySide6_version} loaded.')
+print(f'CaImAn { cm.__version__} loaded.')
 
 try:
     from pluvianus import __version__
@@ -2937,10 +2931,10 @@ class SpatialWidget(QWidget):
             ctitle = 'Temporal maximum of Y - BG (static)'
         elif array_text == 'MaxResGood':
             image_data = self.mainwindow.max_res_good
-            ctitle = 'Temporal maximum of Y - BG - GC (static)'
+            ctitle = 'Temporal maximum of Y - BG - RCM,good (static)'
         elif array_text == 'MaxResAll':
             image_data = self.mainwindow.max_res_all
-            ctitle = 'Temporal maximum of Y - BG - GC - BC (static)'
+            ctitle = 'Temporal maximum of Y - BG - RCM,all (static)'
         else:
             raise NotImplementedError   
         

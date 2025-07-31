@@ -1,7 +1,6 @@
-from PySide6.QtWidgets import QSplitter, QSplitterHandle
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QPainter, QColor, QPolygon
-
+from PySide6.QtWidgets import QSplitter, QSplitterHandle
 
 """
 GripSplitter

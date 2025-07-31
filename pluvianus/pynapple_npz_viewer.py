@@ -1,11 +1,12 @@
-import sys
-import os
-import numpy as np
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QFileDialog
-import pyqtgraph as pg
-import pynapple as nap
 import json
+import os
+import sys
 import tempfile
+
+import numpy as np
+import pynapple as nap
+import pyqtgraph as pg
+from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QFileDialog
 
 # Set pyqtgraph global configuration
 pg.setConfigOption('background', 'w')

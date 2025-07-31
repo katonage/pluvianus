@@ -1,4 +1,7 @@
+#!/usr/bin/env python3
+
 import argparse
+
 from pluvianus.pluvianus_app import run_gui
 
 def main():
@@ -11,4 +14,3 @@ def main():
 
 if __name__ == "__main__":
     main()
- 
