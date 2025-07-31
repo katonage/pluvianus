@@ -12,12 +12,14 @@ import uuid
 import caiman as cm # type: ignore
 from caiman.source_extraction import cnmf # type: ignore
 from caiman.utils.visualization import get_contours as caiman_get_contours # type: ignore
+
 import cv2
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import numpy as np
 import pynapple as nap
+
 import pyqtgraph as pg
 from PySide6 import __version__ as PySide6_version
 from PySide6.QtCore import Qt, QUrl
