@@ -16,6 +16,13 @@ Pluvianus is distributed under the MIT License. If you use Pluvianus in your wor
 
 TODO: reference
 
+## Related repositories
+
+- [CaImAn](https://caiman.readthedocs.io/en/latest/) – Calcium imaging analysis toolkit with motion correction and source extraction.
+- [mesmerize-core](https://github.com/nel-lab/mesmerize-core) – Batch management of CaImAn calculations and parameter search.
+- [pynapple](https://pynapple.org/index.html) – Time series analysis for neuroscience data.
+- [PyQtGraph](https://www.pyqtgraph.org/) – Interactive plotting library for scientific data.
+
 ## Installation
 
 This package is intended for installation within an existing CaImAn conda environment. Please refer to the [CaImAn installation instructions](https://caiman.readthedocs.io/en/latest/Installation.html) to set up this environment. 
@@ -170,8 +177,8 @@ Performs various calculations on the data. Calculations that invoke CaImAn funct
 
 ### Export menu
 "Export" lets you export various data:
-* C: Export component activity traces in `.npy` format, either for all components or only for good components.
-* ΔF/F: Export detrended ΔF/F traces in `.npy` format, either for all components or only for good components.
+* C: Export component activity traces in `.npz` format, either for all components or only for good components.
+* ΔF/F: Export detrended ΔF/F traces in `.npz` format, either for all components or only for good components.
 * Countours: Export component contours in `.MEScROI` format, only for good components.
 
 See also the Save functionality in the File menu. <br>
@@ -193,15 +200,16 @@ For step-by-step instructions please refer to the associated publication, which 
 
 TODO: reference here
 
-## TODO 
-### Next
+## TODO / Next
+* add pluvianus distribution to pypi...
 * displaying all component's temporal curves together (gray), mouse click event on that to select component
 * Movement correction of raw files from OnACID pipeline 
-### Future plans / Expertiese wanted
-* support of 3D data
+## Future plans / Expertiese wanted
+* Support of 3D data
 * Edit parameters of the compute menu options
-* 
-* add pluvianus distribution to pypi...
-* marketing in/to CaImAn community
+* Supporting registration of chronic recordings
+* Merging RoIs
 
-Tested on PC, Windows, Anaconda3. CaImAn 1.11.4, PySide6 6.9.0. PySide 6.9.1 freezes.
+## Notes
+Tested on PC, Windows, Anaconda3. CaImAn 1.11.4, PySide6 6.9.0. <br>
+PySide 6.9.1 freezes.
