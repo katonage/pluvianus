@@ -56,20 +56,20 @@ Use the File menu to open a `.hdf5` file exported by the CaImAn package (`Ctrl+O
 **Note:** Only `.hdf5` and `.mmap` files created by CaImAn are supported.
 
 ### Command Line Usage
-You can also launch Pluvianus directly with the CaImAn .hdf5 result file and .mmap data file by specifying them as command-line arguments: 
+You can also launch Pluvianus directly with the CaImAn `.hdf5` result file and `.mmap` data file by specifying them as command-line arguments: 
    ```bash
    pluvianus -f results.hdf5 -d movie.mmap
    ```
    or 
    ```bash
-   python -m pluvianus --file results.hdf5 --data movie.mmap` 
+   python -m pluvianus --file results.hdf5 --data movie.mmap
    ```
 ### Opening Demo Files
-* Run all cells in the CaImAn [demo_pipeline.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_pipeline.ipynb) (you can also find a copy of this file within your already installed CaImAn environment).
-* This will create the necessary two files in the `caiman_data\temp` folder:
-  * `demo_pipeline_results.hdf5` result file of the CNMF algorythm
-  * `Sue_2x_3000_40_-46_els__d1_170_d2_170_d3_1_order_F_frames_3000.mmap` movement corected memory mapped movie datafile.
-* Launch Pluvianus as described above opening these two files.
+* Run all cells in the CaImAn [demo_pipeline.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_pipeline.ipynb) notebook (you can also find a copy of this file within your already installed CaImAn environment).
+* This will create the two necessary files in the `caiman_data\temp` folder:
+  * `demo_pipeline_results.hdf5`: result file of the CNMF algorithm.
+  * `Sue_2x_3000_40_-46_els__d1_170_d2_170_d3_1_order_F_frames_3000.mmap`: movement corected memory mapped movie datafile.
+* Launch Pluvianus as described above, and open these two files.
 
 ## GUI Overview
 The Pluvianus GUI consists of three main panels:
@@ -85,8 +85,8 @@ Shows the outlines and spatial positions of components. An additional Spatial Wi
 
 ### Temporal Widget
 Component selection: <br>Select a component using the "Component" spinbox, or by clicking its outline in the Spatial Widget or its point in the Scatter Widget. <br>
-Cycle through components with the "Up" and "Down" buttons, or with the keyboard arrow keys. The order in which components are shown can be changed via the "Order by" dropdown. This way you can: <br>
-* Iterate only the good or bad components (`index (Good)` or `index (Bad)`)
+Cycle through components with the "Up" and "Down" buttons, or with the keyboard arrow keys. The order in which components are shown can be changed via the "Order by" dropdown. This way you can:
+* Iterate through only the good or bad components (`index (Good)` or `index (Bad)`)
 * Go through the components according to their selected metrics 
   * `SNR`, `CNN`, `R value`: Refer to the CaImAn documentation for detailed definitions of these metrics. 
   * `Compound`: Calculated from the above metrics; it corresponds to a position along the diagonal of the scatter plot.
@@ -111,7 +111,7 @@ Graph interactions:
   * Drag with left mouse button to pan time and vertical axis independently.
   * Drag with right mouse button or scroll to zoom on a specific axis.
 * "A" Button: Hovering inside the view reveals an "A" button in the lower left, which fits the plot to all data horizontally and vertically.
-* Right-click on the plot to open context menu that allows exporting the scene
+* Right-click on the plot to open a context menu allowing you to export the scene
 
 "Center": Centers the selected time on the largest peak of the selected component’s activity (maximum of C). Use horizontal scrolling to adjust temporal zoom. "Auto" will automatically center when a new component is selected. <br>
 
@@ -123,13 +123,13 @@ Scroll through time using the slider below the plot (shows both frame number and
 ### Scatter Widget
 A 3D scatter plot displays all components, using three evaluation metrics as axes. Clicking on a point selects it on the Temporal and Spatial Widgets. Good components are displayed as green points, whereas bad components are displayed as red points.
 
-In the Assignemnt section, use "Good" and "Bad" to manually accept or reject the component, regardless of evaluation thresholds. Keyboard shortcuts: `g` for Good, `b` for Bad.<br>
-In the Thresholds section set two thresholds ("lowest" and "min") per metric. A component is classified as good if it exceeds all "lowest" thresholds and at least one "min" threshold, unless manually overridden as above. Press "Evaluate" to apply the current thresholds (uses CaImAn's `filter_components()`).
+In the Assignment section, use "Good" and "Bad" to manually accept or reject the selected component, regardless of evaluation thresholds. Keyboard shortcuts: `g` for Good, `b` for Bad.<br>
+In the Thresholds section you can set two thresholds ("lowest" and "min") per metric. A component is classified as good if it exceeds all "lowest" thresholds and at least one "min" threshold, unless manually overridden as above. Press "Evaluate" to apply the current thresholds (uses CaImAn's `filter_components()`).
 
 ### Spatial Widget
 Shows the component contours (green for good, red for bad).<br>
 Pan: Left mouse button; Zoom: Mouse wheel; Fit image: "A" button (lower left)<br>
-Adjust colormap using the colorbar on the right; right-click to select alternate color schemes.<br>
+Adjust the colormap using the colorbar on the right; right-click to select alternate color schemes. Reset it with the "Reset Colorbar" button.
 
 Under "Display" select the quantity to display (at the selected timepoint):
 * `A`: Spatial footprint of selected component
@@ -151,7 +151,7 @@ Under "Contours" choose which component outlines are visible:
 * `None`: No components
 
 Drag from the right edge (three dots) to open a secondary Spatial Widget for side-by-side comparison of different quantities.<br>
-By right clicking use the context menu to export it to various formats.
+Right-click on the plot to open a context menu allowing you to export the scene.
 
 ### File menu
 * Open CaImAn HDF5 File: Loads the saved estimates object from CNMF or OnACID analyses.
@@ -172,8 +172,9 @@ Performs various calculations on the data. Calculations that invoke CaImAn funct
 * Compute Original Fluorescence Traces: Calculates the mean fluorescence under each component's contour. The component traces can be viewed by selecting `Data` in the Temporal Widget. `Data neuropil` is calculated as the mean of all pixels not belonging to a component. These raw traces can be compared to the results of CaImAn.
 * Compute Temporal Maximum of Residuals: Computes the temporal maximum of three types of residuals. You can view these under "Display" in the Spatial Widget. The types of residuals are:
     * `MaxResNone`: Subtracts the background (BG) from the original data (Y), and takes each pixel's temporal maximum
-    * `MaxResGood`: Subtracts BG and good components activity (RCM,good) from Y, and takes each pixel's temporal maximum
-    * `MaxResAll`: Subtracts BG and all components activity (RCM,all) from Y, and takes each pixel's temporal maximum
+    * `MaxResGood`: Subtracts BG and good components' activity (RCM,good) from Y, and takes each pixel's temporal maximum
+    * `MaxResAll`: Subtracts BG and all components' activity (RCM,all) from Y, and takes each pixel's temporal maximum
+* Compute Data Array for OnACID files: computes the data array from an OnACID result file and the original movie, and saves it as a `.mmap` file. Only results with the parameter `pw_rigid = False` can be used! The original movie's format can be `.hdf5`, `.tiff`, `.npy`, or `.mmap`. If the movie consists of multiple files, they must be selected and passed in temporal order! Calls the `apply_shift_online` function on the original movie and the shifts stored in the result.
 
 ### Export menu
 "Export" lets you export various data:
@@ -204,7 +205,7 @@ TODO: reference here
 * add pluvianus distribution to pypi...
 * displaying all component's temporal curves together (gray), mouse click event on that to select component
 * Movement correction of raw files from OnACID pipeline 
-## Future plans / Expertiese wanted
+## Future plans / Expertise wanted
 * Support of 3D data
 * Edit parameters of the compute menu options
 * Supporting registration of chronic recordings
@@ -212,4 +213,4 @@ TODO: reference here
 
 ## Notes
 Tested on PC, Windows, Anaconda3. CaImAn 1.11.4, PySide6 6.9.0. <br>
-PySide 6.9.1 freezes.
+With PySide 6.9.1 the application freezes.

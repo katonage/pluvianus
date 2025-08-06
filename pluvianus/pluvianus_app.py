@@ -271,8 +271,6 @@ class MainWindow(QMainWindow):
         
         # Compute menu
         comp_menu = self.menuBar().addMenu('Compute')
-        self.compute_data_array_action = QAction('Compute Data Array for OnACID Files')
-        comp_menu.addAction(self.compute_data_array_action)
         self.detr_action = QAction('Detrend ΔF/F', self)
         comp_menu.addAction(self.detr_action)
         self.compute_component_evaluation_action = QAction('Compute Component Metrics', self)
@@ -285,6 +283,8 @@ class MainWindow(QMainWindow):
         comp_menu.addAction(self.compute_origtrace_action)
         self.compute_residual_maximums_action = QAction('Compute Temporal Maximum of Residuals', self)
         comp_menu.addAction(self.compute_residual_maximums_action)
+        self.compute_data_array_action = QAction('Compute Data Array for OnACID Files')
+        comp_menu.addAction(self.compute_data_array_action)
         
         # View menu
         view_menu = self.menuBar().addMenu('View')
@@ -336,13 +336,13 @@ class MainWindow(QMainWindow):
         self.save_trace_action_f_a_n.triggered.connect(lambda: self.save_trace('F_dff', 'All', 'npz'))
         self.save_mescroi_action.triggered.connect(self.save_MEScROI)
         
-        self.compute_data_array_action.triggered.connect(self.on_compute_data_array_action)
         self.detr_action.triggered.connect(self.on_detrend_action)
         self.compute_component_evaluation_action.triggered.connect(self.on_compute_evaluate_components_action)
         self.compute_projections_action.triggered.connect(self.on_compute_projections_action)
         self.compute_cn_action.triggered.connect(self.on_compute_cn_action)
         self.compute_origtrace_action.triggered.connect(self.on_compute_origtrace_action)
         self.compute_residual_maximums_action.triggered.connect(self.on_compute_residual_maximums)
+        self.compute_data_array_action.triggered.connect(self.on_compute_data_array_action)
         self.opts_action.triggered.connect(self.on_opts_action)
         
         self.info_action.triggered.connect(self.on_info_action)
@@ -897,13 +897,13 @@ class MainWindow(QMainWindow):
         self.save_max_image_action.setEnabled(self.max_projection_array is not None)
         self.save_std_image_action.setEnabled(self.std_projection_array is not None)       
         
-        self.compute_data_array_action.setEnabled(self.cnm is not None and self.online is True and self.data_array is None)
         self.detr_action.setEnabled(self.cnm is not None and self.cnm.estimates.F_dff is None)
         self.compute_component_evaluation_action.setEnabled(self.data_array is not None)
         self.compute_projections_action.setEnabled(self.data_array is not None)
         self.compute_cn_action.setEnabled(self.data_array is not None)
         self.compute_origtrace_action.setEnabled(self.data_array is not None)
         self.compute_residual_maximums_action.setEnabled(self.data_array is not None)
+        self.compute_data_array_action.setEnabled(self.cnm is not None and self.online is True and self.data_array is None)
         self.save_trace_action_c_a_n.setEnabled(self.cnm is not None)
         self.save_trace_action_c_g_n.setEnabled(self.cnm is not None and self.cnm.estimates.idx_components is not None)
         self.save_trace_action_f_a_n.setEnabled(self.cnm is not None and self.cnm.estimates.F_dff is not None)
