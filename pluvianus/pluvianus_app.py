@@ -13,6 +13,7 @@ import caiman as cm # type: ignore
 from caiman.source_extraction import cnmf # type: ignore
 from caiman.utils.visualization import get_contours as caiman_get_contours # type: ignore
 import cv2
+import h5py
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
@@ -266,7 +267,10 @@ class MainWindow(QMainWindow):
         self.save_std_image_action = QAction('Save Std Image...', self)
         file_menu.addAction(self.save_std_image_action) # Need to add maximum residuals here later
         
+        # Compute menu
         comp_menu = self.menuBar().addMenu('Compute')
+        self.compute_data_array_action = QAction('Compute Data Array for OnACID Files')
+        comp_menu.addAction(self.compute_data_array_action)
         self.detr_action = QAction('Detrend ΔF/F', self)
         comp_menu.addAction(self.detr_action)
         self.compute_component_evaluation_action = QAction('Compute Component Metrics', self)
@@ -280,7 +284,7 @@ class MainWindow(QMainWindow):
         self.compute_residual_maximums_action = QAction('Compute Temporal Maximum of Residuals', self)
         comp_menu.addAction(self.compute_residual_maximums_action)
         
-        
+        # View menu
         view_menu = self.menuBar().addMenu('View')
         self.info_action = QAction('Info', self)
         view_menu.addAction(self.info_action)
@@ -330,6 +334,7 @@ class MainWindow(QMainWindow):
         self.save_trace_action_f_a_n.triggered.connect(lambda: self.save_trace('F_dff', 'All', 'npz'))
         self.save_mescroi_action.triggered.connect(self.save_MEScROI)
         
+        self.compute_data_array_action.triggered.connect(self.on_compute_data_array_action)
         self.detr_action.triggered.connect(self.on_detrend_action)
         self.compute_component_evaluation_action.triggered.connect(self.on_compute_evaluate_components_action)
         self.compute_projections_action.triggered.connect(self.on_compute_projections_action)
@@ -517,8 +522,6 @@ class MainWindow(QMainWindow):
             self.scatter_widget.update_selected_component_on_scatterplot(self.selected_component)
         else:
             self.scatter_widget.update_component_assignment_buttons()
-            
-
         
     def set_selected_frame(self, value, window=None):
         if self.cnm is None:
@@ -551,8 +554,6 @@ class MainWindow(QMainWindow):
             self.background_window.close()
         if hasattr(self, 'info_window') and self.info_window.isVisible():
             self.info_window.close()
-            
-    
  
     def on_threshold_spinbox_changed(self):
         if self.cnm.estimates.idx_components is None:
@@ -560,6 +561,55 @@ class MainWindow(QMainWindow):
         self.file_changed = True
         self.update_title()
             
+    def on_compute_data_array_action(self):
+        movie_paths, _ = QFileDialog.getOpenFileNames(self, "Open original movie(s)", self.hdf5_file, "HDF5 Files (*.hdf5);;TIFF files (*.tif *.tiff);;All files (*)")
+        # The files HAVE to be in order!
+        if not movie_paths:
+            return
+
+        progress_dialog = QProgressDialog('Computing Data Array', None, 0, 100, self)
+        progress_dialog.setWindowTitle('Computing Data Array')
+        progress_dialog.setModal(True)
+        progress_dialog.setValue(0)
+        progress_dialog.setFixedWidth(300)
+        progress_dialog.show()
+        QApplication.processEvents()
+
+        progress_dialog.setValue(25)
+        progress_dialog.setLabelText(f'Loading original movie(s)...')
+
+        images = cm.load(movie_paths) # Documentation says hdf5, tiff, npy, and mmap formats are supported. Only tested on hdf5 so far though!
+        shifts = self.cnm.estimates.shifts[-self.cnm.estimates.C.shape[-1]:]
+
+        try:
+            mmap_path = cm.motion_correction.apply_shift_online(images, shifts, save_base_name="memmap", order='C')
+        except Exception as e:
+            progress_dialog.close()
+            QMessageBox.critical(self, 'Motion Correction Error', f'Error during motion correction:\n{str(e)}')
+            return
+
+        progress_dialog.setValue(50)
+        progress_dialog.setLabelText(f'Loading memmap file...')
+
+        Yr, dims, T = cm.load_memmap(mmap_path)
+        if T != self.num_frames or dims[0] != self.dims[1] or dims[1] != self.dims[0]:
+            progress_dialog.close()
+            QMessageBox.critical(self, 'Error loading data', f'Incompatible data dimensions: expected {self.num_frames} frames x {self.dims[0]} x {self.dims[1]} pixels, but got {T} frames x {dims[0]} x {dims[1]} pixels.')
+            print(f'Incompatible data dimensions: expected {self.num_frames} frames x {self.dims[0]} x {self.dims[1]} pixels, but got {T} frames x {dims[1]} x {dims[0]} pixels.')
+            return
+        
+        self.data_array = Yr
+        self.data_file = mmap_path
+
+        progress_dialog.setValue(75)
+        progress_dialog.setLabelText(f'Rendering windows...')
+        
+        self.spatial_widget.update_spatial_view(array_text='Data')
+        self.update_all()
+
+        progress_dialog.setValue(100)
+        progress_dialog.setLabelText('Done.')
+        progress_dialog.close()
         
     def on_detrend_action(self):
         '''
@@ -710,7 +760,6 @@ class MainWindow(QMainWindow):
         if not QDesktopServices.openUrl(url):
             QMessageBox.warning(self, "Open URL", "Could not open URL: " + url.toString())
         
-        
     def open_file(self, file_path=None): 
         if file_path is None or file_path is False:       
             if self.hdf5_file is None:
@@ -740,17 +789,23 @@ class MainWindow(QMainWindow):
         progress_dialog.setFixedWidth(300)
         progress_dialog.show()
         QApplication.processEvents()
-        try:
-            self.cnm = cnmf.online_cnmf.load_OnlineCNMF(filename) 
-            #check
-            if self.cnm.params.online['movie_name_online'] == 'online_movie.mp4':
-                raise Exception('Not an OnlineCNMF file')
-            self.online = True
+
+        def t_test(name):
+            if name == "t_online":
+                self.online = True
+                return True
+
+        f = h5py.File(filename, 'r')
+        f.visit(t_test)
+
+        if(self.online):
+            self.cnm = cnmf.online_cnmf.load_OnlineCNMF(filename)
             print('File loaded (OnlineCNMF):', filename)
-        except Exception as e:
+        else:
             progress_dialog.setValue(12)
             progress_dialog.setLabelText('Opening CNMF file...')
             QApplication.processEvents()
+            
             try:
                 self.cnm = cnmf.cnmf.load_CNMF(filename)
                 self.online = False
@@ -760,6 +815,7 @@ class MainWindow(QMainWindow):
                 self.cnm=None
                 QMessageBox.critical(self, 'Error opening file', 'File could not be opened: ' + filename)
                 return
+
         self.hdf5_file = filename
         self.file_changed = False
         self.data_file = ''
@@ -811,8 +867,6 @@ class MainWindow(QMainWindow):
         progress_dialog.setValue(100)
         progress_dialog.setLabelText('Done.')
         progress_dialog.close()
-        
-
                         
     def update_all(self):
         
@@ -841,6 +895,7 @@ class MainWindow(QMainWindow):
         self.save_max_image_action.setEnabled(self.max_projection_array is not None)
         self.save_std_image_action.setEnabled(self.std_projection_array is not None)       
         
+        self.compute_data_array_action.setEnabled(self.cnm is not None and self.online is True and self.data_array is None)
         self.detr_action.setEnabled(self.cnm is not None and self.cnm.estimates.F_dff is None)
         self.compute_component_evaluation_action.setEnabled(self.data_array is not None)
         self.compute_projections_action.setEnabled(self.data_array is not None)
@@ -2978,6 +3033,7 @@ class SpatialWidget(QWidget):
 
 def run_gui(file_path=None, data_path=None):
     app = QApplication(sys.argv)
+
     try:
         with importlib.resources.as_file(importlib.resources.files("pluvianus").joinpath("pluvianus.ico")) as icon_path:
             app.setWindowIcon(QIcon(str(icon_path)))
@@ -2987,17 +3043,15 @@ def run_gui(file_path=None, data_path=None):
     app.processEvents()
     
     window = MainWindow()
-    window.show()
+    window.showMaximized()
     app.processEvents()
         
     if file_path:
         window.open_file(file_path)
     if data_path:
-        window.open_data_file(data_path)  #if filepath was not loaded, it will be ignored
-
+        window.open_data_file(data_path)  # if filepath was not loaded, it will be ignored
 
     sys.exit(app.exec())
 
 if __name__ == "__main__":
     run_gui()
-    
