@@ -792,32 +792,74 @@ class MainWindow(QMainWindow):
         progress_dialog.show()
         QApplication.processEvents()
 
-        def t_test(name):
-            if name == "t_online":
-                self.online = True
-                return True
 
-        f = h5py.File(filename, 'r')
-        f.visit(t_test)
+        class CaImAnFileChecker:
+            def __init__(self):
+                self.file_is_online = False
+                self.filename = ''
+                self.likely_correct = False
 
-        if(self.online):
-            self.cnm = cnmf.online_cnmf.load_OnlineCNMF(filename)
-            print('File loaded (OnlineCNMF):', filename)
-        else:
-            progress_dialog.setValue(12)
-            progress_dialog.setLabelText('Opening CNMF file...')
-            QApplication.processEvents()
-            
-            try:
-                self.cnm = cnmf.cnmf.load_CNMF(filename)
-                self.online = False
+            def check_file(self, filename):
+                def look_for_t_online(name):
+                    if name == "t_online":
+                        self.file_is_online = True
+                
+                def look_for_dims(name):
+                    if name == "dims":
+                        self.likely_correct = True
+                
+                self.likely_correct = False #this is a placeholder, you can implement more checks if needed                
+                self.file_is_online = False
+                self.filename = filename
+                with h5py.File(filename, 'r') as f:
+                    f.visit(look_for_dims) # set self.likely_correct to True if "dims" is found
+                    if not self.likely_correct:
+                        print('Warning: File does not contain "dims" dataset, it may not be a valid CaImAn file.')
+                        return
+                    f.visit(look_for_t_online) # set self.file_is_online to True if "t_online" is found
+
+
+            @property
+            def is_online(self):
+                return self.file_is_online
+
+            @property
+            def file_name(self):
+                return self.filename
+
+            @property
+            def is_likely_correct(self):
+                return self.likely_correct  
+
+
+        # Check if the file is an OnlineCNMF file
+        file_checker = CaImAnFileChecker()
+        file_checker.check_file(filename)
+        if not file_checker.is_likely_correct:
+            print('Error: File is not a valid CaImAn file:', filename)
+            progress_dialog.close()
+            QMessageBox.critical(self, 'Error opening file', 'File is not a valid CaImAn file: ' + filename)
+            return
+        
+        progress_dialog.setValue(12)
+        progress_dialog.setLabelText('Opening CNMF file...')
+        QApplication.processEvents()
+        
+        try:      
+            if(file_checker.is_online):
+                loaded_cnm = cnmf.online_cnmf.load_OnlineCNMF(filename)
+                print('File loaded (OnlineCNMF):', filename)
+            else:
+                loaded_cnm = cnmf.cnmf.load_CNMF(filename)
                 print('File loaded (CNMF):', filename)
-            except Exception as e:
-                print('Could not load file')
-                self.cnm=None
-                QMessageBox.critical(self, 'Error opening file', 'File could not be opened: ' + filename)
-                return
+        except Exception as e:
+            print('Could not load file')
+            progress_dialog.close()
+            QMessageBox.critical(self, 'Error opening file', 'File could not be opened: ' + filename)
+            return
 
+        self.cnm= loaded_cnm
+        self.online = file_checker.is_online
         self.hdf5_file = filename
         self.file_changed = False
         self.data_file = ''
