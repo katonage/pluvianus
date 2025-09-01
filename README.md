@@ -100,22 +100,21 @@ Under the "Plot" section, you can visualize traces for the selected component as
     * `Data`: Original movie mean under the component
 
 A running average over the data can also be applied.<br>
-"Y fit all" rescales the plot vertically to include all traces.
+"Y fit all": rescales the plot vertically to include all traces.<br>
+
+"Center": centers the selected time on the largest peak of the selected component’s activity (maximum of C). Use horizontal scrolling to adjust temporal zoom.<br>
+"Auto": centers automatically when a new component is selected. <br>
 
 Graph interactions: 
-* On the center pane
+* On the center pane:
   * Drag with left mouse button to pan.
   * Drag with right mouse button to zoom.
   * Scroll with the mouse wheel to uniformly zoom.
-* On the axes
+* On the axes:
   * Drag with left mouse button to pan time and vertical axis independently.
   * Drag with right mouse button or scroll to zoom on a specific axis.
 * "A" Button: Hovering inside the view reveals an "A" button in the lower left, which fits the plot to all data horizontally and vertically.
 * Right-click on the plot to open a context menu allowing you to export the scene
-
-"Center": Centers the selected time on the largest peak of the selected component’s activity (maximum of C). Use horizontal scrolling to adjust temporal zoom. "Auto" will automatically center when a new component is selected. <br>
-
-Under the view you can scroll through the time by dragging the slider. This displays frame number and also absolute time.
 
 Timeline Navigation: <br>
 Scroll through time using the slider below the plot (shows both frame number and absolute time). Right of the timeline, specify the time window for temporal averaging in the Spatial Widget.
