@@ -185,7 +185,7 @@ Performs various calculations on the data. Calculations that invoke CaImAn funct
     * `MaxResNone`: Subtracts the background (BG) from the original data (Y), and takes each pixel's temporal maximum
     * `MaxResGood`: Subtracts BG and good components' activity (RCM,good) from Y, and takes each pixel's temporal maximum
     * `MaxResAll`: Subtracts BG and all components' activity (RCM,all) from Y, and takes each pixel's temporal maximum
-* `Compute Data Array for OnACID files`: computes the data array from an OnACID result file and the original movie, and saves it as a `.mmap` file. Only results with the parameter `pw_rigid = False` can be used. The original movie's format can be `.hdf5`, `.tiff`, `.npy`, or `.mmap`. If the movie consists of multiple files, they must be selected and passed in temporal order! Calls the `apply_shift_online` function on the original movie and the shifts stored in the result.
+* `Compute Data Array for OnACID files`: Computes the data array from an OnACID result file and the original movie, and saves it as a `.mmap` file. Only results with the parameter `pw_rigid = False` can be used. The original movie's format can be `.hdf5`, `.tiff`, `.npy`, or `.mmap`. If the movie consists of multiple files, they must be selected and passed in temporal order! Calls the `apply_shift_online()` function on the original movie and the shifts stored in the result.
 
 ### Export menu
 "Export" lets you export various data:
