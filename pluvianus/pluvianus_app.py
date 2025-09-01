@@ -831,7 +831,13 @@ class MainWindow(QMainWindow):
         self.std_projection_array = None
         self.orig_trace_array = None
         self.orig_trace_array_neuropil = None
-        # cn, std_projection?
+        self.max_res_none = None
+        self.max_res_none_idx = None # maximum residuals after bg subtraction time indexes
+        self.max_res_good = None
+        self.max_res_good_idx = None # maximum residuals for good components time indexes
+        self.max_res_all = None 
+        self.max_res_all_idx = None  # maximum residuals for all components time indexes
+        
         progress_dialog.setValue(25)
         progress_dialog.setLabelText('Processing data...')
         QApplication.processEvents()
@@ -906,7 +912,7 @@ class MainWindow(QMainWindow):
         self.compute_projections_action.setEnabled(self.data_array is not None)
         self.compute_cn_action.setEnabled(self.data_array is not None)
         self.compute_origtrace_action.setEnabled(self.data_array is not None)
-        self.compute_residual_maximums_action.setEnabled(self.data_array is not None)
+        self.compute_residual_maximums_action.setEnabled(self.data_array is not None and self.cnm is not None and self.cnm.estimates.idx_components is not None) 
         self.compute_data_array_action.setEnabled(self.cnm is not None and self.online is True and self.data_array is None)
         self.save_trace_action_c_a_n.setEnabled(self.cnm is not None)
         self.save_trace_action_c_g_n.setEnabled(self.cnm is not None and self.cnm.estimates.idx_components is not None)
@@ -1949,15 +1955,15 @@ class TopWidget(QWidget):
             if array_text == 'C':
                 ctitle=f'Temporal Component ({index})'
             elif array_text == 'F_dff':
-                ctitle=f'detrended \u0394F/F ({index})'
+                ctitle=f'Detrended \u0394F/F ({index})'
             elif array_text == 'YrA':
                 ctitle=f'Residual ({index})'
             elif array_text == 'S':
                 ctitle=f'Spike count estimate ({index})'
             elif array_text== 'Data':
-                ctitle=f'Original fluorescence trace ({index})'
+                ctitle=f'Mean fluorescence under contour ({index})'
             elif array_text== 'Data neuropil':
-                ctitle=f'Original fluorescence trace neuropil mean'
+                ctitle=f'Mean fluorescence outside contours'
             else:
                 ctitle=f'Temporal Component ({array_text}, {index})'
             
@@ -2931,7 +2937,7 @@ class SpatialWidget(QWidget):
         
         if array_text == 'A':
             image_data = np.reshape(self.mainwindow.A_array[:, component_idx], self.mainwindow.dims) 
-            ctitle=f'Spatial component footprint ({component_idx})(static)'
+            ctitle=f'Spatial footprint of component {component_idx} (static)'
         elif array_text == 'Data':
             #print('display: elapsed off {:.2f}'.format((time.perf_counter()-self.ctime)))
             #self.ctime=time.perf_counter()
