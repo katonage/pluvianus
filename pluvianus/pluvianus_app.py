@@ -14,7 +14,6 @@ from caiman.source_extraction import cnmf # type: ignore
 from caiman.utils.visualization import get_contours as caiman_get_contours # type: ignore
 
 import cv2
-import h5py
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
@@ -33,6 +32,7 @@ from PySide6.QtWidgets import (
 from scipy.signal.windows import gaussian
 
 from pluvianus.GripSplitter import GripSplitter
+from pluvianus.CaImAnFileChecker import CaImAnFileChecker
 
 print(f'PySide6 {PySide6_version} loaded.')
 print(f'CaImAn { cm.__version__} loaded.')
@@ -564,7 +564,7 @@ class MainWindow(QMainWindow):
         self.update_title()
             
     def on_compute_data_array_action(self):
-        movie_paths, _ = QFileDialog.getOpenFileNames(self, "Open original movie(s)", self.hdf5_file, "HDF5 Files (*.hdf5);;TIFF files (*.tif *.tiff);;All files (*)")
+        movie_paths, _ = QFileDialog.getOpenFileNames(self, "Open original movie(s) used for the OnACID analysis", self.hdf5_file, "TIFF files (*.tif *.tiff);;HDF5 Files (*.hdf5);;All files (*)")
         # The files HAVE to be in order!
         if not movie_paths:
             return
@@ -588,10 +588,12 @@ class MainWindow(QMainWindow):
         except Exception as e:
             progress_dialog.close()
             QMessageBox.critical(self, 'Motion Correction Error', f'Error during motion correction:\n{str(e)}')
+            print(f'Error during motion correction:\n{str(e)}')
             return
 
         progress_dialog.setValue(50)
         progress_dialog.setLabelText(f'Loading memmap file...')
+        print('Motion corrected mmap file created: ', mmap_path)
 
         Yr, dims, T = cm.load_memmap(mmap_path)
         if T != self.num_frames or dims[0] != self.dims[1] or dims[1] != self.dims[0]:
@@ -792,47 +794,7 @@ class MainWindow(QMainWindow):
         progress_dialog.show()
         QApplication.processEvents()
 
-
-        class CaImAnFileChecker:
-            def __init__(self):
-                self.file_is_online = False
-                self.filename = ''
-                self.likely_correct = False
-
-            def check_file(self, filename):
-                def look_for_t_online(name):
-                    if name == "t_online":
-                        self.file_is_online = True
-                
-                def look_for_dims(name):
-                    if name == "dims":
-                        self.likely_correct = True
-                
-                self.likely_correct = False #this is a placeholder, you can implement more checks if needed                
-                self.file_is_online = False
-                self.filename = filename
-                with h5py.File(filename, 'r') as f:
-                    f.visit(look_for_dims) # set self.likely_correct to True if "dims" is found
-                    if not self.likely_correct:
-                        print('Warning: File does not contain "dims" dataset, it may not be a valid CaImAn file.')
-                        return
-                    f.visit(look_for_t_online) # set self.file_is_online to True if "t_online" is found
-
-
-            @property
-            def is_online(self):
-                return self.file_is_online
-
-            @property
-            def file_name(self):
-                return self.filename
-
-            @property
-            def is_likely_correct(self):
-                return self.likely_correct  
-
-
-        # Check if the file is an OnlineCNMF file
+        # Use file checker before loading to test if file is a valid CaImAn file and to it is an OnACID or CNMF file.
         file_checker = CaImAnFileChecker()
         file_checker.check_file(filename)
         if not file_checker.is_likely_correct:
