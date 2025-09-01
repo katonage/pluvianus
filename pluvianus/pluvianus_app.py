@@ -564,7 +564,7 @@ class MainWindow(QMainWindow):
         self.update_title()
             
     def on_compute_data_array_action(self):
-        movie_paths, _ = QFileDialog.getOpenFileNames(self, "Open original movie(s) used for the OnACID analysis", self.hdf5_file, "TIFF files (*.tif *.tiff);;HDF5 Files (*.hdf5);;All files (*)")
+        movie_paths, _ = QFileDialog.getOpenFileNames(self, "Open original movie(s) used for the OnACID analysis", self.hdf5_file, "HDF5 Files (*.hdf5);;TIFF files (*.tif *.tiff);;All files (*)")
         # The files HAVE to be in order!
         if not movie_paths:
             return

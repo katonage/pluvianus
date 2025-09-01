@@ -65,11 +65,20 @@ You can also launch Pluvianus directly with the CaImAn `.hdf5` result file and `
    python -m pluvianus --file results.hdf5 --data movie.mmap
    ```
 ### Opening Demo Files
+#### CNMF
 * Run all cells in the CaImAn [demo_pipeline.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_pipeline.ipynb) notebook (you can also find a copy of this file within your already installed CaImAn environment).
 * This will create the two necessary files in the `caiman_data\temp` folder:
   * `demo_pipeline_results.hdf5`: result file of the CNMF algorithm.
   * `Sue_2x_3000_40_-46_els__d1_170_d2_170_d3_1_order_F_frames_3000.mmap`: movement corected memory mapped movie datafile.
 * Launch Pluvianus as described above, and open these two files.
+#### OnACID
+* Run the [demo_OnACID_mesoscope.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_OnACID_mesoscope.ipynb) notebook.
+* To save results, add  `cnm.save('demo_OnACID_mesoscope_results.hdf5')` to the end of the notebook.
+* This will create the results file.
+* Launch Pluvianus as described above, and open this file.
+* In Pluvianus, launch the `Compute Data Array for OnACID Files` menu option.
+   * Select all three .hdf5 files in the `caiman_data\example_movies\Mesoscope` folder. This will create a concatenated movement corrected .mmap file in the `temp` folder that can be used later to load the data.
+* Launch the `Compute Component Metrics` and the `Detrend ΔF/F` menu options to complete the analysis.
 
 ## GUI Overview
 The Pluvianus GUI consists of three main panels:
@@ -84,28 +93,31 @@ Visualizes each component in a 3D scatter plot according to three evaluation met
 Shows the outlines and spatial positions of components. An additional Spatial Widget can be opened by dragging the three dots on the right edge.
 
 ### Temporal Widget
-Component selection: <br>Select a component using the "Component" spinbox, or by clicking its outline in the Spatial Widget or its point in the Scatter Widget. <br>
+**Component selection:**<br>
+Select a component using the "Component" spinbox, or by clicking its outline in the Spatial Widget or its point in the Scatter Widget. <br>
 Cycle through components with the "Up" and "Down" buttons, or with the keyboard arrow keys. The order in which components are shown can be changed via the "Order by" dropdown. This way you can:
 * Iterate through only the good or bad components (`index (Good)` or `index (Bad)`)
 * Go through the components according to their selected metrics 
   * `SNR`, `CNN`, `R value`: Refer to the CaImAn documentation for detailed definitions of these metrics. 
   * `Compound`: Calculated from the above metrics; it corresponds to a position along the diagonal of the scatter plot.
 
-Under the "Plot" section, you can visualize traces for the selected component as a function of frame number. The selected quantities are shown on the vertical axes: the first (blue) on the left, the second (red) on the right.
-* `C`: Denoised calcium trace
+**Quantity selection:**<br>
+Under the "Plot" section, you can select the quantities to be plotted for the selected component as a function of frame number. The selected quantities are shown on the vertical axes: the first (blue) on the left, the second (red) on the right.
+* `C`: Denoised calcium trace (Temporal component)
 * `S`: Spike count estimate
-* `YrA`: Residual of trace
+* `YrA`: Residual of the trace
 * Others if computed (see "Compute" section)
-    * `F_dff`: Signal-to-baseline ratio
-    * `Data`: Original movie mean under the component
+    * `F_dff`: Estimated ΔF/F trace
+    * `Data`: Mean fluorescence of the original movie under the component contour
 
 A running average over the data can also be applied.<br>
-"Y fit all": rescales the plot vertically to include all traces.<br>
+"Y fit all": Rescales the plot vertically to include all traces. Use this to compare absolute amplitudes of the comonents.<br>
 
-"Center": centers the selected time on the largest peak of the selected component’s activity (maximum of C). Use horizontal scrolling to adjust temporal zoom.<br>
-"Auto": centers automatically when a new component is selected. <br>
+**Centering time on activity maximum:**<br>
+"Center": Positions the selected time on the largest peak of the selected component’s activity (maximum of C). Use mouse scrol on the horizontal axis to adjust temporal zoom.<br>
+"Auto": Centers time automatically when a new component is selected. <br>
 
-Graph interactions: 
+**Graph interactions:** <br>
 * On the center pane:
   * Drag with left mouse button to pan.
   * Drag with right mouse button to zoom.
@@ -116,14 +128,8 @@ Graph interactions:
 * "A" Button: Hovering inside the view reveals an "A" button in the lower left, which fits the plot to all data horizontally and vertically.
 * Right-click on the plot to open a context menu allowing you to export the scene
 
-Timeline Navigation: <br>
+**Timeline navigation:** <br>
 Scroll through time using the slider below the plot (shows both frame number and absolute time). Right of the timeline, specify the time window for temporal averaging in the Spatial Widget.
-
-### Scatter Widget
-A 3D scatter plot displays all components, using three evaluation metrics as axes. Clicking on a point selects it on the Temporal and Spatial Widgets. Good components are displayed as green points, whereas bad components are displayed as red points.
-
-In the Assignment section, use "Good" and "Bad" to manually accept or reject the selected component, regardless of evaluation thresholds. Keyboard shortcuts: `g` for Good, `b` for Bad.<br>
-In the Thresholds section you can set two thresholds ("lowest" and "min") per metric. A component is classified as good if it exceeds all "lowest" thresholds and at least one "min" threshold, unless manually overridden as above. Press "Evaluate" to apply the current thresholds (uses CaImAn's `filter_components()`).
 
 ### Spatial Widget
 Shows the component contours (green for good, red for bad).<br>
@@ -133,9 +139,9 @@ Adjust the colormap using the colorbar on the right; right-click to select alter
 Under "Display" select the quantity to display (at the selected timepoint):
 * `A`: Spatial footprint of selected component
 * `Data`: Original data
-* `Residuals`
 * `RCM`: Reconstructed movie
 * `RCB`: Reconstructed background
+* `Residuals`: Difference of the original data and the RCM and RCB
 * `B0`, `B1`: Background components
 
 "Zoom" centers the view on the selected component, with zoom corresponding to estimated neuron diameter. "Auto" will automatically center and zoom when a new component is selected. <br>
@@ -152,28 +158,34 @@ Under "Contours" choose which component outlines are visible:
 Drag from the right edge (three dots) to open a secondary Spatial Widget for side-by-side comparison of different quantities.<br>
 Right-click on the plot to open a context menu allowing you to export the scene.
 
+### Scatter Widget
+A 3D scatter plot displays all components, using three evaluation metrics as axes. Clicking on a point selects it on the Temporal and Spatial Widgets. Good components are displayed as green points, whereas bad components are displayed as red points.
+
+In the Assignment section, use "Good" and "Bad" to manually accept or reject the selected component, regardless of evaluation thresholds. Keyboard shortcuts: `g` for Good, `b` for Bad.<br>
+In the Thresholds section you can set two thresholds ("lowest" and "min") per metric. A component is classified as good if it exceeds all "lowest" thresholds and at least one "min" threshold, unless manually overridden as above. Press "Evaluate" to apply the current thresholds (uses CaImAn's `filter_components()`).
+
 ### File menu
-* Open CaImAn HDF5 File: Loads the saved estimates object from CNMF or OnACID analyses.
-* Save / Save as...: Pluvianius can save CaimAn data back into an `.hdf5` file, preserving:
+* `Open CaImAn HDF5 File`: Loads the saved estimates object from CNMF or OnACID analyses.
+* `Save / Save as...`: Pluvianius can save CaimAn data back into an `.hdf5` file, preserving:
    * Results of the ΔF/F calculation (`.F_dff`)
    * Calculated component metrics (`.r_values`, `.SNR_comp`, `.cnn_preds`)
    * Component evaluation threshold levels (`SNR_lowest`, `min_SNR`, `cnn_lowest`, `min_cnn_thr`, `val_lowest`, `rval_thr`)
    * Manual component assigments (`.idx_components`)
-* Open Data Array: Opens the movement corrected `.mmap` file containing the original fluorescence movie. This file is required for most computations and visualizations.
-* Load/Save Mean/Max/Std/Local correlations images: these images can be computed from the data and displayed in the Spatial view. The file format is `.npy`. 
+* `Open Data Array`: Opens the movement corrected `.mmap` file containing the original fluorescence movie. This file is required for most computations and visualizations.
+* `Load/Save Mean/Max/Std/Local correlations images`: these images can be computed from the data and displayed in the Spatial view. The file format is `.npy`. 
 
 ### Compute menu
 Performs various calculations on the data. Calculations that invoke CaImAn functions inherit their parameters from the currently opened `.hdf5` file; you can view these parameters under View → CaImAn Parameters.
-* Detrend ΔF/F: Calculates detrended relative fluorescence change. You can view this by selecting `F_dff` under "Plot" in the Temporal Widget. Calls the `detrend_df_f()` function.
-* Compute Component Metrics: (Re)computes the three metrics used for component evaluation. Calls the `evaluate_components()` function. 
-* Compute Projections: computes the temporal Mean, Max and STD images. You can also save them to `.npy` files in the File menu.
-* Compute Local Correlation Image: Viewable as `Cn` in the Spatial Widget. Calls the `local_correlations_movie_offline()` function, and computes its maximum. 
-* Compute Original Fluorescence Traces: Calculates the mean fluorescence under each component's contour. The component traces can be viewed by selecting `Data` in the Temporal Widget. `Data neuropil` is calculated as the mean of all pixels not belonging to a component. These raw traces can be compared to the results of CaImAn.
-* Compute Temporal Maximum of Residuals: Computes the temporal maximum of three types of residuals. You can view these under "Display" in the Spatial Widget. The types of residuals are:
+* `Detrend ΔF/F`: Calculates detrended relative fluorescence change. You can view this by selecting `F_dff` under "Plot" in the Temporal Widget. Calls the `detrend_df_f()` function.
+* `Compute Component Metrics`: (Re)computes the three metrics used for component evaluation. Calls the `evaluate_components()` function. 
+* `Compute Projections`: computes the temporal Mean, Max and STD images. You can also save them to `.npy` files in the File menu.
+* `Compute Local Correlation Image`: Calls the `local_correlations_movie_offline()` function, and computes its maximum. Result can be viewed as `Cn` in the Spatial Widget. 
+* `Compute Original Fluorescence Traces`: Calculates the mean fluorescence under each component's contour. The component traces can be viewed by selecting `Data` in the Temporal Widget. `Data neuropil` is calculated as the mean of all pixels not belonging to a component. These raw traces can be compared to the results of CaImAn.
+* `Compute Temporal Maximum of Residuals`: Computes the temporal maximum of three types of residuals. You can view these under "Display" in the Spatial Widget. The types of residuals are:
     * `MaxResNone`: Subtracts the background (BG) from the original data (Y), and takes each pixel's temporal maximum
     * `MaxResGood`: Subtracts BG and good components' activity (RCM,good) from Y, and takes each pixel's temporal maximum
     * `MaxResAll`: Subtracts BG and all components' activity (RCM,all) from Y, and takes each pixel's temporal maximum
-* Compute Data Array for OnACID files: computes the data array from an OnACID result file and the original movie, and saves it as a `.mmap` file. Only results with the parameter `pw_rigid = False` can be used! The original movie's format can be `.hdf5`, `.tiff`, `.npy`, or `.mmap`. If the movie consists of multiple files, they must be selected and passed in temporal order! Calls the `apply_shift_online` function on the original movie and the shifts stored in the result.
+* `Compute Data Array for OnACID files`: computes the data array from an OnACID result file and the original movie, and saves it as a `.mmap` file. Only results with the parameter `pw_rigid = False` can be used. The original movie's format can be `.hdf5`, `.tiff`, `.npy`, or `.mmap`. If the movie consists of multiple files, they must be selected and passed in temporal order! Calls the `apply_shift_online` function on the original movie and the shifts stored in the result.
 
 ### Export menu
 "Export" lets you export various data:
@@ -203,7 +215,7 @@ TODO: reference here
 ## TODO / Next
 * add pluvianus distribution to pypi...
 * displaying all component's temporal curves together (gray), mouse click event on that to select component
-* Movement correction of raw files from OnACID pipeline 
+* optionaly synchronize axis of spatial widgets
 ## Future plans / Expertise wanted
 * Support of 3D data
 * Edit parameters of the compute menu options
