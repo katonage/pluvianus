@@ -573,12 +573,10 @@ class MainWindow(QMainWindow):
         progress_dialog.setWindowTitle('Computing Data Array')
         progress_dialog.setModal(True)
         progress_dialog.setValue(0)
-        progress_dialog.setFixedWidth(300)
+        progress_dialog.setFixedWidth(450)
+        progress_dialog.setLabelText(f'Motion correcting movie(s) (apply_shift_online()) ...')
         progress_dialog.show()
         QApplication.processEvents()
-
-        progress_dialog.setValue(25)
-        progress_dialog.setLabelText(f'Loading original movie(s)...')
 
         images = cm.load(movie_paths) # Documentation says hdf5, tiff, npy, and mmap formats are supported. Only tested on hdf5 so far though!
         shifts = self.cnm.estimates.shifts[-self.cnm.estimates.C.shape[-1]:]
@@ -623,12 +621,13 @@ class MainWindow(QMainWindow):
         if self.cnm is None or self.cnm.estimates.F_dff is not None:
             return
         print('Detrending...')
-        waitDlg = QProgressDialog('Detrending in progress...', None, 0, 0, self)
+        waitDlg = QProgressDialog('Detrending in progress (detrend_df_f())...', None, 0, 0, self)
         waitDlg.setWindowModality(Qt.ApplicationModal)  # Blocks input to main window
         waitDlg.setCancelButton(None)  # No cancel button
         waitDlg.setWindowTitle('Please Wait')
         waitDlg.setMinimumDuration(0)  # Show immediately
         waitDlg.setRange(0, 0)  # Indeterminate progress
+        waitDlg.setFixedWidth(450)
         waitDlg.show()
 
         # Change cursor to wait cursor
@@ -1220,7 +1219,7 @@ class MainWindow(QMainWindow):
         progress_dialog.setWindowTitle('Computing Component Metrics')
         progress_dialog.setModal(True)
         progress_dialog.setValue(0)
-        progress_dialog.setFixedWidth(300)
+        progress_dialog.setFixedWidth(450)
         progress_dialog.show()
         QApplication.processEvents()
         
@@ -1229,7 +1228,7 @@ class MainWindow(QMainWindow):
         images = np.reshape(Yr.T, [self.num_frames] + [self.dims[1]] + [self.dims[0]], order='F')
         
         progress_dialog.setValue(10)
-        progress_dialog.setLabelText(f'Evaluating components (may take a while)...')
+        progress_dialog.setLabelText(f'Evaluating components (evaluate_components()) (may take a while)...')
         QApplication.processEvents()
         print('Evaluating components (estimates.evaluate_components)...')
         c, dview, n_processes = cm.cluster.setup_cluster(backend='local', n_processes=None, single_thread=False)
@@ -1272,7 +1271,7 @@ class MainWindow(QMainWindow):
         progress_dialog.setWindowTitle('Computing Projection Images')
         progress_dialog.setModal(True)
         progress_dialog.setValue(0)
-        progress_dialog.setFixedWidth(300)
+        progress_dialog.setFixedWidth(450)
         progress_dialog.show()
         
         Yr=self.data_array 
@@ -1303,15 +1302,15 @@ class MainWindow(QMainWindow):
             return    
         from caiman.summary_images import local_correlations_movie_offline # type: ignore
         
-        progress_dialog = QProgressDialog('Creating local correlation movie (may take a while)...', None, 0, 100, self)
-        progress_dialog.setWindowTitle('Computing Correlation Image')
+        progress_dialog = QProgressDialog('Creating correlation movie (local_correlations_movie_offline()) (may take a while)...', None, 0, 100, self)
+        progress_dialog.setWindowTitle('Computing Local Correlation Image')
         progress_dialog.setModal(True)
-        progress_dialog.setFixedWidth(300)
+        progress_dialog.setFixedWidth(500)
         progress_dialog.setValue(0)
         progress_dialog.show()
         QApplication.processEvents()
         
-        print('Calculating correlation image (local_correlations_movie_offline)...')   
+        print('Calculating local correlation image (local_correlations_movie_offline)...')   
         c, dview, n_processes = cm.cluster.setup_cluster(backend='local', n_processes=None, single_thread=False)
         Cns = local_correlations_movie_offline(
                 str(self.data_file),
@@ -1326,7 +1325,7 @@ class MainWindow(QMainWindow):
         
         print('Movie created.')
         progress_dialog.setValue(80)
-        progress_dialog.setLabelText(f'Projecting to correlation image...')
+        progress_dialog.setLabelText(f'Projecting to image...')
         QApplication.processEvents()
         print(Cns.shape)
         Cn = Cns.max(axis=0)
@@ -1353,7 +1352,7 @@ class MainWindow(QMainWindow):
         progress_dialog.setWindowTitle('Calculating fluorescence traces from data file...')
         progress_dialog.setModal(True)
         progress_dialog.setValue(0)
-        progress_dialog.setFixedWidth(400)
+        progress_dialog.setFixedWidth(450)
         progress_dialog.show()
         QApplication.processEvents()
         
