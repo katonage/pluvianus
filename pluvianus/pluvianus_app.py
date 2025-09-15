@@ -2426,7 +2426,7 @@ class ScatterWidget(QWidget):
         self.plt_figure.clf()
         self.plt_figure.patch.set_facecolor('w')
         self.plt_ax = self.plt_figure.add_subplot(111, projection='3d')
-        self.plt_ax.set_box_aspect((1,1,1),  zoom=1.1)
+        self.plt_ax.set_box_aspect((1,1,1),  zoom=1.0)
         
         self.plt_canvas.mpl_connect("motion_notify_event", self.on_scatter_hover)
         self.plt_canvas.mpl_connect("pick_event", self.on_scatter_point_clicked)
@@ -2455,19 +2455,20 @@ class ScatterWidget(QWidget):
             colors = ['green' if i in cnme.idx_components else 'red' for i in range(num_components)]
         else:
             colors = plt.cm.viridis(np.linspace(0, 1, num_components))
-        x = cnme.cnn_preds
-        y = cnme.r_values
+        self.colors=colors
+        self.x = cnme.cnn_preds
+        self.y = cnme.r_values
         z = np.log10(cnme.SNR_comp)
-        z = np.where(np.isfinite(z), z, 0)
-        self.plt_scatter = self.plt_ax.scatter(x, y, z, c=colors, s=10, alpha=0.5, picker=5)
-            
-        #self.plt_figure.colorbar(self.scatter, ax=self.ax, shrink=0.5)
-
+        self.z = np.where(np.isfinite(z), z, 0)
+        self.s=self.z*0+10
+        self.alpha=self.z*0+0.3
+        self.plt_scatter = self.plt_ax.scatter(self.x, self.y, self.z, c=self.colors, s=self.s, alpha=self.alpha, picker=5)
+        
         self.plt_annot = self.plt_figure.text(0.00, 1.00, "",  va='top', ha='left')
         self.plt_annot.set_fontsize(8)
         self.plt_annot.set_visible(False)
         
-        self.plt_selected_scatterpoint = self.plt_ax.scatter(1,2, 3, marker='o', c='magenta', s=30, alpha=1)
+        self.plt_selected_scatterpoint = self.plt_ax.scatter(0,0, 0, marker='o', c='magenta', s=30, alpha=1)
         self.update_selected_component_on_scatterplot(self.mainwindow.selected_component)
         
         self.plt_hover_marker = self.plt_ax.plot([1], [1], [1], color='k', linewidth=0.5)[0]
@@ -2528,12 +2529,28 @@ class ScatterWidget(QWidget):
         z_val = np.log10(float(cnm.estimates.SNR_comp[index]))
         z_val = z_val if np.isfinite(z_val) else 0.0
         if cnm.estimates.idx_components is not None and index in cnm.estimates.idx_components:
-            color = 'green'
+            color = 'blue'#'green'
         else:
             color = 'magenta'     
+        colors=self.colors.copy()
+        colors[index]=color
+        s=self.s.copy()
+        s[index]=30
+        #alpha=self.alpha.copy()
+        #alpha[index]=1.0
         
         self.plt_selected_scatterpoint._offsets3d = ([x_val], [y_val], [z_val])
         self.plt_selected_scatterpoint.set_color(color)
+        
+        self.plt_scatter.set_color(colors)
+        self.plt_scatter.set_sizes(s)
+        #self.plt_scatter.set_alpha(alpha)
+        #funny things happen here. plt_selected_scatterpoint is alway shown behind the scatter, often covered.
+        #setting alpha and having alpha[index]=1 on the scatter makes 'random' points of the scatter nontransparent also depending of the display angle of the axes.
+        #So we set alpha of the scatter to 0.3 and also use a separate point for the selected component - but this is an incomplete solution. 
+        # better would be to draw something as selection mark whish is always on top. maybe we need matplotlib buxfix.
+        
+
         self.plt_canvas.draw()
         #print(f'Updating selected component on scatter plot: {index}')
         
