@@ -19,7 +19,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Information Analysis"
 ]
 dependencies = [
-    "PySide6<=6.9.0",      # Avoid 6.9.1 due to known problems. 6.8.2.1 and 6.9.0 work; newer versions may work as there is a related ticket in the pipeline.
+    "PySide6!=6.9.1",      # Avoid 6.9.1 due to known problems. 6.8.2.1, 6.9.0 and 6.9.2 work; 
     "pyqtgraph",             
     "pynapple"            
     # caiman expected in the caiman environment

@@ -223,5 +223,5 @@ TODO: reference here
 * Merging RoIs
 
 ## Notes
-Tested on PC, Windows, Anaconda3. CaImAn 1.11.4, PySide6 6.9.0. <br>
+Tested on PC, Windows, Anaconda3. CaImAn 1.11.4, PySide6 6.9.2. <br>
 With PySide 6.9.1 the application freezes.
