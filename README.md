@@ -26,8 +26,9 @@ TODO: Paper reference here
 ## Installation
 
 This package is intended for installation within an existing CaImAn conda environment. Please refer to the [CaImAn installation instructions](https://caiman.readthedocs.io/en/latest/Installation.html) to set up this environment. 
-Do not install Pluvianus via `pip install pluvianus` outside of the CaImAn environment.
+Do not install Pluvianus outside of the CaImAn environment!
 
+### From Source
 Steps:
 1. Clone the repository:  
    ```bash
@@ -39,7 +40,10 @@ Steps:
    ```bash
    pip install -e .
 
-**Note:** PyPI distribution is not yet available; this is planned for a future release.
+### From distribution
+* Install Pluvianus from PyPI:
+   ```bash
+   pip install pluvianus
 
 
 ### System Requirements
@@ -213,12 +217,12 @@ For step-by-step instructions please refer to the associated publication, which 
 TODO: Paper reference here
 
 ## Future plans 
-* displaying all component's temporal curves together (gray), mouse click event on that to select component
-* optionaly synchronize axis of spatial widgets
+* Displaying all component's temporal curves together (gray), mouse click event on that to select component
+* Optionaly synchronize axis of spatial widgets
 * Support of 3D data
 * Edit parameters of the compute menu options
-* Supporting registration of chronic recordings
 * Merging RoIs
+* Supporting comonent registration for chronic recordings
 
 ## Notes
 Tested on PC, Windows, Anaconda3. CaImAn 1.11.4, PySide6 6.9.2. <br>
