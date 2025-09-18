@@ -14,7 +14,7 @@ A standalone GUI for browsing, editing, and manually verifying CaImAn results.
 ##  License
 Pluvianus is distributed under the MIT License. If you use Pluvianus in your work, please cite our associated publication:
 
-TODO: reference
+TODO: Paper reference here
 
 ## Related repositories
 
@@ -210,13 +210,11 @@ For step-by-step instructions please refer to the associated publication, which 
 - Assessing the completeness of component extraction
 - Component evaluation using thresholds and manual review
 
-TODO: reference here
+TODO: Paper reference here
 
-## TODO / Next
-* add pluvianus distribution to pypi...
+## Future plans 
 * displaying all component's temporal curves together (gray), mouse click event on that to select component
 * optionaly synchronize axis of spatial widgets
-## Future plans / Expertise wanted
 * Support of 3D data
 * Edit parameters of the compute menu options
 * Supporting registration of chronic recordings
