@@ -28,6 +28,11 @@ TODO: Paper reference here
 This package is intended for installation within an existing CaImAn conda environment. Please refer to the [CaImAn installation instructions](https://caiman.readthedocs.io/en/latest/Installation.html) to set up this environment. 
 Do not install Pluvianus outside of the CaImAn environment!
 
+### From distribution
+* To install Pluvianus from PyPI, run the following command in your already set up caiman environment:
+   ```bash
+   pip install pluvianus
+
 ### From Source
 Steps:
 1. Clone the repository:  
@@ -39,12 +44,6 @@ Steps:
 3. Install Pluvianus in editable mode into your CaImAn environment:
    ```bash
    pip install -e .
-
-### From distribution
-* Install Pluvianus from PyPI:
-   ```bash
-   pip install pluvianus
-
 
 ### System Requirements
 * Refer to CaImAn’s system requirements: https://caiman.readthedocs.io/en/latest/Installation.html

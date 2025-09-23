@@ -10,8 +10,9 @@ to make it more visible. This is a drop-in replacement.
 
 """
 class GripSplitterHandle(QSplitterHandle):
-    def __init__(self, orientation, parent):
+    def __init__(self, orientation, parent, theme="light"):
         super().__init__(orientation, parent)
+        self.theme = theme
         self.bar_width = 6      # Light gray bar thickness
         self.dot_radius = 2     # Small circle (dot) radius
         self.dot_spacing = 8   # Spacing between dot centers
@@ -23,11 +24,22 @@ class GripSplitterHandle(QSplitterHandle):
         painter.setRenderHint(QPainter.Antialiasing)
         handle_rect = self.rect()
         
+        # Theme-based colors
+        if self.theme == "dark":
+            bg_color = QColor('#303030')
+            bg_color.setAlpha(0)  # Fully transparent   
+            bar_color = QColor('#505050')
+            grip_color = QColor('#A0A0A0')
+        else:  # light
+            bg_color = QColor('#F0F0F0')
+            bg_color.setAlpha(0)  # Fully transparent   
+            bar_color = QColor('#E0E0E0')
+            grip_color = QColor('#B0B0B0')
+            
         # 1. Fill handle background with very light gray
-        painter.fillRect(handle_rect, QColor('#F0F0F0'))
+        painter.fillRect(handle_rect, bg_color)
 
         # 2. Draw the light gray bar
-        bar_color = QColor('#E0E0E0')
         painter.setPen(Qt.NoPen)
         painter.setBrush(bar_color)
 
@@ -39,7 +51,6 @@ class GripSplitterHandle(QSplitterHandle):
             painter.drawRect(0, y, handle_rect.width(), self.bar_width)
 
         # 3. Draw three small grip circles (classic look)
-        grip_color = QColor('#B0B0B0')
         painter.setBrush(grip_color)
         painter.setPen(Qt.NoPen)
 
@@ -57,9 +68,10 @@ class GripSplitterHandle(QSplitterHandle):
                 painter.drawEllipse(QPoint(x, y), self.dot_radius, self.dot_radius)
 
 class GripSplitter(QSplitter):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, theme="light", **kwargs):
         super().__init__(*args, **kwargs)
         self.setHandleWidth(14)  # Set handle width by default
+        self.theme = theme
 
     def createHandle(self):
-        return GripSplitterHandle(self.orientation(), self)
+        return GripSplitterHandle(self.orientation(), self, theme=self.theme)

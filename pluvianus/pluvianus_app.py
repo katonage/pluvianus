@@ -17,13 +17,14 @@ import cv2
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import numpy as np
 import pynapple as nap
 
 import pyqtgraph as pg
 from PySide6 import __version__ as PySide6_version
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QKeySequence, QShortcut 
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QKeySequence, QShortcut, QPalette
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QScrollArea, QCheckBox,QSlider,
     QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QLabel, QComboBox, QPushButton, QProgressDialog, QSizePolicy,
@@ -103,7 +104,7 @@ class ShiftsWindow(QMainWindow):
         self.resize(700, 500)
         
 class BackgroundWindow(QMainWindow):
-    def __init__(self, b, f, dims):
+    def __init__(self, b, f, dims, theme='light'):
         super().__init__()
         self.setWindowTitle('Background Components')
         central_widget = QWidget()
@@ -125,11 +126,11 @@ class BackgroundWindow(QMainWindow):
         self.b = b
         self.f = f
         self.dims = dims
+        self.is_dark_theme = theme == 'dark'
         
         # bottom row
         #bottom_row = QHBoxLayout()
-        bottom_row = GripSplitter( childrenCollapsible=False)
-        bottom_row.setStyleSheet('QSplitter::handle { background-color: lightgray; }')
+        bottom_row = GripSplitter( childrenCollapsible=False, theme='dark' if self.is_dark_theme else 'light')
         
         self.temporal_widget = pg.PlotWidget()
         self.temporal_widget.setDefaultPadding( 0.0 )
@@ -233,8 +234,15 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.resize(1000, 700)
-        pg.setConfigOptions(background='w', foreground='k')
         
+        #are we using dark palette?
+        self.is_dark_theme = QApplication.instance().palette().color(QPalette.Window).value() < 128
+        print('Using ' + ('dark' if self.is_dark_theme else 'light') + ' theme')
+        
+        if self.is_dark_theme:
+            pg.setConfigOptions(background='k', foreground='w')
+        else:
+            pg.setConfigOptions(background='w', foreground='k')
         
         # Setup file menu with Open, Save, Save As
         file_menu = self.menuBar().addMenu('File')
@@ -367,16 +375,14 @@ class MainWindow(QMainWindow):
         self.closeEvent = self.on_mainwindow_closing
         
         # Create central widget and layout       
-        main_layout = GripSplitter(Qt.Vertical)
+        main_layout = GripSplitter(Qt.Vertical, theme='dark' if self.is_dark_theme else 'light')
         self.setCentralWidget(main_layout)
-        main_layout.setStyleSheet('QSplitter::handle { background-color: lightgray; }')
         
         self.temporal_widget = TopWidget(self, self)
         main_layout.addWidget(self.temporal_widget)
         
-        bottom_layout_splitter = GripSplitter()
-        bottom_layout_splitter.setStyleSheet('QSplitter::handle { background-color: lightgray; }')
-
+        bottom_layout_splitter = GripSplitter(theme='dark' if self.is_dark_theme else 'light')
+        
         self.scatter_widget= ScatterWidget(self, self)
         bottom_layout_splitter.addWidget(self.scatter_widget)
         
@@ -706,7 +712,7 @@ class MainWindow(QMainWindow):
             self.background_window.show()
             return
         print(self.dims)
-        self.background_window = BackgroundWindow(self.cnm.estimates.b, self.cnm.estimates.f, self.dims)
+        self.background_window = BackgroundWindow(self.cnm.estimates.b, self.cnm.estimates.f, self.dims, theme='dark' if self.is_dark_theme else 'light')
         self.background_window.show()
     
 
@@ -1573,7 +1579,6 @@ class TopWidget(QWidget):
         
         # Top plot: Temporal 
         self.temporal_view = PlotWidgetWithRightAxis() #override of pg.PlotWidget
-        self.temporal_view.setRightColor('#8b0000')
         # Create a container widget inside scroll area
         scroll_content = QWidget()
         left_layout = QVBoxLayout(scroll_content)
@@ -2003,11 +2008,19 @@ class TopWidget(QWidget):
         self.array_selector2.setToolTip(tooltips[array_text2] + ' (right axis)') 
 
         y, ctitle=self._get_trace( index, array_text, self.rlavr_spinbox.value())
-        self.temporal_view.setLabel('left', f'{array_text} value')       
-        self.temporal_line1.setData(x=np.arange(len(y)), y=y, pen=pg.mkPen(color='b', width=2), name=f'data {array_text} {index}')
+        self.temporal_view.setLabel('left', f'{array_text} value')     
+        if self.mainwindow.is_dark_theme:
+            bluecolor = '#1E90FF'
+            redcolor = '#FF4500'
+        else:
+            redcolor = "#CC0000"
+            bluecolor = '#0000FF'  
+        self.temporal_view.setRightColor(redcolor)
+        
+        self.temporal_line1.setData(x=np.arange(len(y)), y=y, pen=pg.mkPen(color=bluecolor, width=2), name=f'data {array_text} {index}')
         if array_text2 != '-':
             y2, ctitle2=self._get_trace( index, array_text2, self.rlavr_spinbox2.value())
-            self.temporal_line2.setData(x=np.arange(len(y2)), y=y2, pen=pg.mkPen(color='r', width=2), name=f'data(2) {array_text2} {index}')
+            self.temporal_line2.setData(x=np.arange(len(y2)), y=y2, pen=pg.mkPen(color=redcolor, width=2), name=f'data(2) {array_text2} {index}')
             self.temporal_line2.setVisible(True)
             self.temporal_view.getPlotItem().setTitle(ctitle + ' - ' + ctitle2)
             self.temporal_view.setLabel('right', f'{array_text2} value')
@@ -2153,7 +2166,7 @@ class ScatterWidget(QWidget):
         bad_toggle_button.setFixedWidth(45)
         bad_toggle_button.setContentsMargins(0, 0, 0, 0)
         bad_toggle_button.setCheckable(True)
-        bad_toggle_button.setStyleSheet('background-color: white; color: red;')
+        #bad_toggle_button.setStyleSheet('background-color: white; color: red;')
         bad_toggle_button.setToolTip('Reject component manually, assign as bad. Keyboard: "b"')
         toggle_button_layout.addWidget(bad_toggle_button)
         self.bad_toggle_button = bad_toggle_button
@@ -2220,6 +2233,12 @@ class ScatterWidget(QWidget):
         scroll_area.setWidget(scroll_content)
         my_layout.addWidget(scroll_area)
 
+
+        if self.mainwindow.is_dark_theme:
+            mpl.style.use("dark_background")
+        else:
+            mpl.style.use("default")
+    
         # Matplotlib canvas for scatter plot ---
         self.plt_figure = Figure()
         self.plt_canvas = FigureCanvasQTAgg(self.plt_figure)
@@ -2395,8 +2414,12 @@ class ScatterWidget(QWidget):
             self.plt_figure.clf()
             text='No evaluated components. Open data array to compute component metrics.'
             self.plt_ax = self.plt_figure.add_subplot(111)
+            if self.mainwindow.is_dark_theme:
+                patch_color=(0.0/255, 0.0/255, 10.0/255, 127.0/255)
+            else:
+                patch_color=(200.0/255, 200.0/255, 210.0/255, 127.0/255)
+            self.plt_figure.patch.set_facecolor(patch_color)
             self.plt_ax.text(0.5, 0.5, text, transform=self.plt_ax.transAxes, ha='center', va='center', size=7.8, color='k')
-            self.plt_figure.patch.set_facecolor((200.0/255, 200.0/255, 210.0/255, 127.0/255))
             self.plt_ax.axis('off')
             self.plt_canvas.draw()
             return
@@ -2424,10 +2447,21 @@ class ScatterWidget(QWidget):
         self.plt_figure.tight_layout()
         # Clear the figure, removing all subplots
         self.plt_figure.clf()
-        self.plt_figure.patch.set_facecolor('w')
+        if self.mainwindow.is_dark_theme:
+            self.plt_figure.set_facecolor('k')
+        else:
+            self.plt_figure.set_facecolor('w')
         self.plt_ax = self.plt_figure.add_subplot(111, projection='3d')
         self.plt_ax.set_box_aspect((1,1,1),  zoom=1.0)
-        
+        pane_color=(127.0/255, 127.0/255, 127.0/255, 0.1)
+        self.plt_ax.xaxis.set_pane_color(pane_color)
+        self.plt_ax.yaxis.set_pane_color(pane_color)
+        self.plt_ax.zaxis.set_pane_color(pane_color)
+        grid_color=(127.0/255, 127.0/255, 127.0/255, 0.5)
+        self.plt_ax.xaxis._axinfo["grid"]['color'] = grid_color
+        self.plt_ax.yaxis._axinfo["grid"]['color'] = grid_color
+        self.plt_ax.zaxis._axinfo["grid"]['color'] = grid_color
+
         self.plt_canvas.mpl_connect("motion_notify_event", self.on_scatter_hover)
         self.plt_canvas.mpl_connect("pick_event", self.on_scatter_point_clicked)
         
@@ -2461,7 +2495,7 @@ class ScatterWidget(QWidget):
         z = np.log10(cnme.SNR_comp)
         self.z = np.where(np.isfinite(z), z, 0)
         self.s=self.z*0+10
-        self.alpha=self.z*0+0.3
+        self.alpha=self.z*0+0.4
         self.plt_scatter = self.plt_ax.scatter(self.x, self.y, self.z, c=self.colors, s=self.s, alpha=self.alpha, picker=5)
         
         self.plt_annot = self.plt_figure.text(0.00, 1.00, "",  va='top', ha='left')
@@ -2471,7 +2505,11 @@ class ScatterWidget(QWidget):
         self.plt_selected_scatterpoint = self.plt_ax.scatter(0,0, 0, marker='o', c='magenta', s=30, alpha=1)
         self.update_selected_component_on_scatterplot(self.mainwindow.selected_component)
         
-        self.plt_hover_marker = self.plt_ax.plot([1], [1], [1], color='k', linewidth=0.5)[0]
+        if self.mainwindow.is_dark_theme:
+            marker_color='w'             
+        else:
+            marker_color='k'
+        self.plt_hover_marker = self.plt_ax.plot([1], [1], [1], color=marker_color, linewidth=0.5)[0]
         self.plt_hover_marker.set_visible(False)
         
         self.threshold_lines = {}
@@ -3060,6 +3098,7 @@ class SpatialWidget(QWidget):
         
 
 def run_gui(file_path=None, data_path=None):
+    # QApplication.setDesktopSettingsAware(False) #breaks linking style to OS theme, which results in ugly non-themed widgets always
     app = QApplication(sys.argv)
 
     try:
