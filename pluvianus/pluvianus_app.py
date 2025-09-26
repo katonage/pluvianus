@@ -2524,7 +2524,7 @@ class ScatterWidget(QWidget):
             
         self.plt_ax.set_xlim(xmin=0, xmax=1) #cnn
         self.plt_ax.set_ylim(ymin=0, ymax=1) #rval
-        self.plt_ax.set_zlim(bottom=np.nanmin(z), top=np.nanmax(z)) #SNR
+        self.plt_ax.set_zlim(bottom=np.nanmin(self.z), top=np.nanmax(self.z)) #SNR
         self.plt_canvas.draw()
 
         
