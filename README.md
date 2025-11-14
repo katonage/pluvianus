@@ -5,13 +5,13 @@ A standalone GUI for browsing, editing, and manually verifying CaImAn results.
 *"Seeing is believing..."*
 
 ## Highlights
-- Standalone Qt GUI
+- Standalone Qt GUI ([example screenshot](https://github.com/katonage/pluvianus/blob/main/pluvianusGUI.png))
 - Spatial and temporal views
 - Interactive scatter plot of component metrics
 - Visualization of extracted traces alongside original data
 - Currently supports only 2D movies
 
-##  License
+## License
 Pluvianus is distributed under the MIT License. If you use Pluvianus in your work, please cite our associated publication:
 
 /Paper reference coming soon. TODO./
@@ -19,9 +19,9 @@ Pluvianus is distributed under the MIT License. If you use Pluvianus in your wor
 ## Related repositories
 
 - [CaImAn](https://caiman.readthedocs.io/en/latest/) – Calcium imaging analysis toolkit with motion correction and source extraction.
-- [mesmerize-core](https://github.com/nel-lab/mesmerize-core) – Batch management of CaImAn calculations and parameter search.
 - [pynapple](https://pynapple.org/index.html) – Time series analysis for neuroscience data.
 - [PyQtGraph](https://www.pyqtgraph.org/) – Interactive plotting library for scientific data.
+- [mesmerize-core](https://github.com/nel-lab/mesmerize-core) – Batch management of CaImAn calculations. Pluvianus works well alongside mesmerize-core (not a dependency).
 
 ## Installation
 
@@ -32,7 +32,7 @@ For Windows users new to CaImAn, see the PDF guide [Note on CaImAn setup on Wind
 Do not install Pluvianus outside of the CaImAn environment!
 
 ### From distribution
-* To install Pluvianus from PyPI, run the following command in your already set up caiman environment:
+* To install Pluvianus from PyPI, run the following command in your already set up CaImAn environment:
    ```bash
    pip install pluvianus
 
@@ -72,8 +72,8 @@ You can also launch Pluvianus directly with the CaImAn `.hdf5` result file and `
 * Run all cells in the CaImAn [demo_pipeline.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_pipeline.ipynb) notebook (you can also find a copy of this file within your already installed CaImAn environment).
 * This will create the two necessary files in the `caiman_data\temp` folder:
   * `demo_pipeline_results.hdf5`: result file of the CNMF algorithm.
-  * `Sue_2x_3000_40_-46_els__d1_170_d2_170_d3_1_order_F_frames_3000.mmap`: motion-corrected memory mapped movie datafile.
-* Launch Pluvianus as described above, and open these two files.
+  * `Sue_2x_3000_40_-46_els__d1_170_d2_170_d3_1_order_F_frames_3000.mmap`: motion-corrected, memory-mapped movie data file.
+* Launch Pluvianus as described above, and open these two files. You should see a window similar to this [example screenshot](https://github.com/katonage/pluvianus/blob/main/pluvianusGUI.png).
 #### OnACID
 * Run the [demo_OnACID_mesoscope.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_OnACID_mesoscope.ipynb) notebook.
 * To save results, add  `cnm.save('demo_OnACID_mesoscope_results.hdf5')` to the end of the notebook.
