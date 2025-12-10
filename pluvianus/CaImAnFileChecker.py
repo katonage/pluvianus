@@ -1,4 +1,11 @@
 import h5py
+
+#todo later add check depending on the 
+# from caiman.utils.utils import hdf5_runmode 
+# that returns 'cnmf' , 'OnACID' or 'UNKNOWN'
+# but this is dependent on caiman > 1.13.0 and so far we dont want to add this dependency
+# see https://github.com/search?q=repo%3Aflatironinstitute%2FCaImAn%20hdf5_runmode&type=code 
+
 class CaImAnFileChecker:
     def __init__(self):
         self.file_is_online = False

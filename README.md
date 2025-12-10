@@ -215,7 +215,8 @@ For step-by-step instructions please refer to the associated publication, which 
 
 /Paper reference coming soon. TODO./
 
-## Future plans 
+## Future plans
+* NWB support
 * Display all components' temporal curves together (in gray), with mouse click event to select a component.
 * Optionally synchronize axes of spatial widgets.
 * Support of 3D data.
