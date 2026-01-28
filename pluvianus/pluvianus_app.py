@@ -876,6 +876,11 @@ class MainWindow(QMainWindow):
         self.component_contour_coords = [self.cnm.estimates.coordinates[idx]['coordinates'] for idx in range(self.numcomps)]
         self.component_centers = np.array([self.cnm.estimates.coordinates[idx]['CoM'] for idx in range(self.numcomps)])
         
+        #fix for loading CNMFE data where cnn_preds is empty array
+        if self.cnm.estimates.cnn_preds is not None:
+            if len(self.cnm.estimates.cnn_preds) == 0:
+                self.cnm.estimates.cnn_preds = self.cnm.estimates.r_values * 0.0 
+        
         progress_dialog.setValue(50)
         progress_dialog.setLabelText(f'Rendering {self.numcomps} components...')
         QApplication.processEvents()
@@ -924,7 +929,7 @@ class MainWindow(QMainWindow):
         self.save_trace_action_f_a_n.setEnabled(self.cnm is not None and self.cnm.estimates.F_dff is not None)
         self.save_trace_action_f_g_n.setEnabled(self.cnm is not None and self.cnm.estimates.idx_components is not None and self.cnm.estimates.F_dff is not None)
         self.save_mescroi_action.setEnabled(self.cnm is not None and self.cnm.estimates.idx_components is not None)
-        self.bg_action.setEnabled(self.cnm is not None)
+        self.bg_action.setEnabled(self.cnm is not None and self.cnm.estimates.b is not None)
         self.shifts_action.setEnabled(self.cnm is not None and self.cnm.estimates.shifts is not None and len(self.cnm.estimates.shifts) > 0)
         self.temporal_widget.time_slider.setEnabled(self.cnm is not None)
         self.temporal_widget.time_spinbox.setEnabled(self.cnm is not None)
@@ -1264,6 +1269,8 @@ class MainWindow(QMainWindow):
                 return
         #CaImAn do the job:
         self.cnm.estimates.filter_components(imgs=self.data_array, params=self.cnm.params)
+        if self.cnm.estimates.cnn_preds is None or len(self.cnm.estimates.cnn_preds) == 0: 
+            self.cnm.estimates.cnn_preds = self.cnm.estimates.r_values * 0.0 #No CNN predictions, set all to 0
         self.manual_acceptance_assigment_has_been_made=False
         
         self.update_all()
@@ -1475,7 +1482,10 @@ class MainWindow(QMainWindow):
             t_max = t + w + 1 if t + w + 1 < num_frames else num_frames
 
             Y = self.data_array[:,t_min:t_max] # Original data
-            BG = np.dot(estimates.b[:, :], estimates.f[:, t_min:t_max]) # Reconstructed background
+            if estimates.b is not None:
+                BG = np.dot(estimates.b[:, :], estimates.f[:, t_min:t_max]) # Reconstructed background
+            else:
+                BG = 0
 
             # Subtracting components and averaging
             data_res_none = np.mean(Y - BG, axis=1)
@@ -2040,6 +2050,8 @@ class TopWidget(QWidget):
             r = cnme.r_values[index]
             max_r = np.max(cnme.r_values)
             min_r = np.min(cnme.r_values)
+            if max_r == min_r:
+                max_r = min_r + 1
             color = f'rgb({int(255*(1-(r-min_r)/(max_r-min_r)))}, {int(255*(r-min_r)/(max_r-min_r))}, 0)'
             self.component_params_r.setText(f'    Rval: {np.format_float_positional(r, precision=2)}')
             self.component_params_r.setToolTip(f'cnm.estimates.r_values[{index}]')
@@ -2047,6 +2059,8 @@ class TopWidget(QWidget):
             
             max_SNR = np.max(cnme.SNR_comp)
             min_SNR = np.min(cnme.SNR_comp)
+            if max_SNR == min_SNR:
+                max_SNR = min_SNR + 1
             color = f'rgb({int(255*(1-(cnme.SNR_comp[index]-min_SNR)/(max_SNR-min_SNR)))}, {int(255*(cnme.SNR_comp[index]-min_SNR)/(max_SNR-min_SNR))}, 0)'
             self.component_params_SNR.setText(f'    SNR: {np.format_float_positional(cnme.SNR_comp[index], precision=2)}')
             self.component_params_SNR.setToolTip(f'cnm.estimates.SNR_comp[{index}]')
@@ -2054,6 +2068,8 @@ class TopWidget(QWidget):
             
             max_cnn = np.max(cnme.cnn_preds)
             min_cnn = np.min(cnme.cnn_preds)
+            if max_cnn == min_cnn:
+                max_cnn = min_cnn + 1
             color = f'rgb({int(255*(1-(cnme.cnn_preds[index]-min_cnn)/(max_cnn-min_cnn)))}, {int(255*(cnme.cnn_preds[index]-min_cnn)/(max_cnn-min_cnn))}, 0)'
             self.component_params_CNN.setText(f'    CNN: {np.format_float_positional(cnme.cnn_preds[index], precision=2)}')
             self.component_params_CNN.setToolTip(f'cnm.estimates.cnn_preds[{index}]')
@@ -2270,7 +2286,7 @@ class ScatterWidget(QWidget):
             self.rval_lowest_spinbox.setEnabled(False)
             self.rval_thr_spinbox.setEnabled(False)
             return
-        if cnm.estimates.cnn_preds is None:
+        if cnm.estimates.cnn_preds is None or len(cnm.estimates.cnn_preds) == 0:
             cnn_range = (0, 1)
         else:
             cnn_range = (np.min(cnm.estimates.cnn_preds), np.max(cnm.estimates.cnn_preds))
@@ -2891,8 +2907,11 @@ class SpatialWidget(QWidget):
         possible_array_text.append('RCM')
         if self.mainwindow.cnm.estimates.idx_components is not None:
             possible_array_text.append('RCM (Good)')            
-        possible_array_text.append('RCB')
-        numbackround=cnme.b.shape[-1]
+        if cnme.b is not None:
+            possible_array_text.append('RCB')
+            numbackround=cnme.b.shape[-1]
+        else:
+            numbackround=0 
         for i in range(numbackround):
             possible_array_text.append(f'B{i}')
         if hasattr(cnme, 'Cn') and cnme.Cn is not None:
@@ -3018,7 +3037,10 @@ class SpatialWidget(QWidget):
         elif array_text == 'Residuals':
             res=self.mainwindow.data_array[:,tmin:tmax]
             rcm=np.dot(self.mainwindow.A_array[:, :] , self.mainwindow.cnm.estimates.C[:, tmin:tmax])
-            rcb=np.dot(self.mainwindow.cnm.estimates.b[:, :] , self.mainwindow.cnm.estimates.f[:, tmin:tmax])
+            if self.mainwindow.cnm.estimates.b is not None:
+                rcb=np.dot(self.mainwindow.cnm.estimates.b[:, :] , self.mainwindow.cnm.estimates.f[:, tmin:tmax])
+            else:
+                rcb=0
             res=res-rcm-rcb
             res=np.mean(res, axis=1)
             image_data = res.reshape(self.mainwindow.dims)
@@ -3026,7 +3048,10 @@ class SpatialWidget(QWidget):
         elif array_text == 'Residuals (Good)':
             res=self.mainwindow.data_array[:,tmin:tmax]
             rcm=np.dot(self.mainwindow.A_array[:, self.mainwindow.cnm.estimates.idx_components] , self.mainwindow.cnm.estimates.C[self.mainwindow.cnm.estimates.idx_components, tmin:tmax])
-            rcb=np.dot(self.mainwindow.cnm.estimates.b[:, :] , self.mainwindow.cnm.estimates.f[:, tmin:tmax])
+            if self.mainwindow.cnm.estimates.b is not None:
+                rcb=np.dot(self.mainwindow.cnm.estimates.b[:, :] , self.mainwindow.cnm.estimates.f[:, tmin:tmax])
+            else:
+                rcb=0
             res=res-rcm-rcb
             res=np.mean(res, axis=1)
             image_data = res.reshape(self.mainwindow.dims)

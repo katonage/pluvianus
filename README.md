@@ -82,6 +82,15 @@ You can also launch Pluvianus directly with the CaImAn `.hdf5` result file and `
 * In Pluvianus, launch the `Compute Data Array for OnACID Files` menu option.
    * Select all three .hdf5 files in the `caiman_data\example_movies\Mesoscope` folder. This will create a concatenated motion-corrected .mmap file in the `temp` folder that can be used later to load the data.
 * Launch the `Compute Component Metrics` and the `Detrend ΔF/F` menu options to complete the analysis.
+#### CNMF-E
+Microendoscopic 1p data (CNMF-E) is partially supported.
+* Run all cells in the CaImAn [demo_pipeline_cnmfE.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_pipeline_cnmfE.ipynb) notebook.
+* This will create the two necessary files in the `caiman_data\temp` folder:
+  * `demo_pipeline_cnmfe_results.hdf5`: result file of the CNMFE algorithm.
+  * `data_endoscope_rig__d1_128_d2_128_d3_1_order_F_frames_1000.mmap`: motion-corrected, memory-mapped movie data file.
+* Launch Pluvianus as described above, and open these two files.
+* Launch the `Detrend ΔF/F` menu options to complete the analysis. 
+Some functions related to background and residuals are not available or meaningless as background is differently implemented in the CNMFE algorithm. CNN prediction value is always 0.
 
 ## GUI Overview
 The Pluvianus GUI consists of three main panels:
