@@ -103,84 +103,7 @@ class ShiftsWindow(QMainWindow):
         layout.addWidget(self.temporal_widget)
         self.resize(700, 500)
         
-class BackgroundWindow(QMainWindow):
-    def __init__(self, b, f, dims, theme='light'):
-        super().__init__()
-        self.setWindowTitle('Background Components')
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
-        
-        # top row
-        top_row = QHBoxLayout()
-        top_row.setAlignment(Qt.AlignLeft)
-        label = QLabel('Component: ')
-        self.spin_box = QSpinBox()
-        self.spin_box.setMinimum(0)
-        self.spin_box.setMaximum(b.shape[-1] - 1)
-        self.spin_box.valueChanged.connect(self.update_plot)
-        top_row.addWidget(label)
-        top_row.addWidget(self.spin_box)
-        layout.addLayout(top_row)
-                        
-        self.b = b
-        self.f = f
-        self.dims = dims
-        self.is_dark_theme = theme == 'dark'
-        
-        # bottom row
-        #bottom_row = QHBoxLayout()
-        bottom_row = GripSplitter( childrenCollapsible=False, theme='dark' if self.is_dark_theme else 'light')
-        
-        self.temporal_widget = pg.PlotWidget()
-        self.temporal_widget.setDefaultPadding( 0.0 )
-        self.temporal_widget.getPlotItem().showGrid(x=True, y=True, alpha=0.3)
-        self.temporal_widget.getPlotItem().setMenuEnabled(False)
-        self.temporal_widget.getPlotItem().showAxes(True, showValues=(True, False, False, True))
-        self.temporal_widget.getPlotItem().setContentsMargins(0, 0, 10, 0)  # add margin to the right
-        self.temporal_widget.getPlotItem().setLabel('bottom', 'Frame Number')
-        self.temporal_widget.getPlotItem().setLabel('left', 'Fluorescence')
-        bottom_row.addWidget(self.temporal_widget)
-
-        self.spatial_widget = pg.PlotWidget()
-        #p1 = self.spatial_widget.addPlot(title='interactive')
-        # Basic steps to create a false color image with color bar:
-        self.spatial_image = pg.ImageItem()
-        self.spatial_widget.addItem( self.spatial_image )
-        self.colorbar_item=self.spatial_widget.getPlotItem().addColorBar(self.spatial_image, colorMap='viridis', rounding=0.00000000001) # , interactive=False)
-        self.spatial_widget.setAspectLocked(True)
-        self.spatial_widget.getPlotItem().showAxes(True, showValues=(True,False,False,True) )
-        for side in ( 'top', 'right'):
-            ax = self.spatial_widget.getPlotItem().getAxis(side)
-            ax.setStyle(tickLength=0) 
-        for side in ('left', 'bottom'):
-            ax = self.spatial_widget.getPlotItem().getAxis(side)
-            ax.setStyle(tickLength=10)         
-        self.spatial_widget.getPlotItem().setMenuEnabled(False)
-        self.spatial_widget.setDefaultPadding( 0.0 )
-        self.spatial_widget.getPlotItem().invertY(True)
-        bottom_row.addWidget(self.spatial_widget)
-        
-        layout.addWidget(bottom_row)
-        self.update_plot(0)        
-        self.resize(1200, 600)
-    
-    def update_plot(self, value):
-        component_idx = self.spin_box.value()
-        # Update image data
-        img_data = self.b[:, component_idx].reshape(self.dims)
-        self.spatial_image.setImage(img_data, autoLevels=False)
-        self.spatial_widget.getPlotItem().setTitle(f'Spatial component {component_idx}')
-        # Update colorbar limits explicitly
-        min_val, max_val = np.min(img_data), np.max(img_data)
-        #self.spatial_image.setLevels([min_val, max_val])
-        self.colorbar_item.setLevels(values=[min_val, max_val])
-        # Update temporal plot (if needed)
-        temporal_data = self.f[component_idx, :]
-        self.temporal_widget.clear()
-        self.temporal_widget.plot(temporal_data, pen='b')
-        self.temporal_widget.getPlotItem().setTitle(f'Temporal component {component_idx}')
-           
+          
 class PlotWidgetWithRightAxis(pg.PlotWidget):
     def __init__(self, *args, **kwargs):
         """
@@ -300,8 +223,6 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self.info_action)
         self.opts_action = QAction('CaImAn Parameters', self)
         view_menu.addAction(self.opts_action)
-        self.bg_action = QAction('Background Components', self)
-        view_menu.addAction(self.bg_action)
         self.shifts_action = QAction('Movement Correction Shifts', self)
         view_menu.addAction(self.shifts_action)
         
@@ -355,7 +276,6 @@ class MainWindow(QMainWindow):
         
         self.info_action.triggered.connect(self.on_info_action)
         self.shifts_action.triggered.connect(self.on_shifts_action)
-        self.bg_action.triggered.connect(self.on_bg_action)
         
         about_action.triggered.connect(self.on_about_action)
         license_action.triggered.connect(self.on_license_action)
@@ -558,8 +478,6 @@ class MainWindow(QMainWindow):
             self.opts_window.close()
         if hasattr(self, 'shifts_window') and self.shifts_window.isVisible():
             self.shifts_window.close()
-        if hasattr(self, 'background_window') and self.background_window.isVisible():
-            self.background_window.close()
         if hasattr(self, 'info_window') and self.info_window.isVisible():
             self.info_window.close()
  
@@ -704,23 +622,12 @@ class MainWindow(QMainWindow):
         self.shifts_window = ShiftsWindow(shifts)
         self.shifts_window.show()
     
-    def on_bg_action(self):
-        if self.cnm is None:
-            return
-        if hasattr(self, 'background_window') and self.background_window.isVisible():
-            self.background_window.raise_()
-            self.background_window.show()
-            return
-        print(self.dims)
-        self.background_window = BackgroundWindow(self.cnm.estimates.b, self.cnm.estimates.f, self.dims, theme='dark' if self.is_dark_theme else 'light')
-        self.background_window.show()
-    
 
     def on_about_action(self):
         text = f"""
             Pluvianus: CaImAn Result Browser
             A standalone GUI for browsing, editing, 
-            and manually verifying CaImAn results..
+            and manually verifying CaImAn results.
 
             by Gergely Katona
 
@@ -732,20 +639,48 @@ class MainWindow(QMainWindow):
     def on_license_action(self):
 
         def read_license():
+            from pathlib import Path
+            import sys
+
+            # 1) PyInstaller bundle (keep your existing behavior)
+            if hasattr(sys, "_MEIPASS"):
+                lic = Path(sys._MEIPASS) / "LICENSE"
+                if lic.exists():
+                    return lic.read_text(encoding="utf-8", errors="replace")
+
+            # 2) Installed package: look into the distribution (dist-info) records
             try:
-                if hasattr(sys, '_MEIPASS'):
-                    # PyInstaller: bundled location
-                    base_path = sys._MEIPASS
-                else:
-                    # Dev or installed: use repo root (assumes this file is in pluvianus/)
-                    base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+                import importlib.metadata as im
 
-                license_path = os.path.join(base_path, "LICENSE")
+                dist = im.distribution("pluvianus")
+                # Common locations in wheels:
+                # - pluvianus-*.dist-info/licenses/<file>
+                # - pluvianus-*.dist-info/LICENSE (less common)
+                candidates = []
+                if dist.files:
+                    for p in dist.files:
+                        s = str(p).replace("\\", "/").lower()
+                        if "dist-info/licenses/" in s and ("license" in s or s.endswith("copying")):
+                            candidates.append(p)
+                        elif "dist-info/" in s and s.endswith("/license"):
+                            candidates.append(p)
 
-                with open(license_path, "r", encoding="utf-8") as f:
-                    return f.read()
-            except Exception as e:
-                return f"Could not load LICENSE file:\n{e}"
+                for p in candidates:
+                    real_path = dist.locate_file(p)
+                    if real_path.exists():
+                        return real_path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+            # 3) Dev / editable install fallback: try repo root relative to this file
+            # If pluvianus_app.py lives in pluvianus/, repo root is one level up; if not, adjust as needed.
+            here = Path(__file__).resolve()
+            for up in [1, 2, 3]:
+                lic = here.parents[up] / "LICENSE"
+                if lic.exists():
+                    return lic.read_text(encoding="utf-8", errors="replace")
+
+            return "Could not load LICENSE file:\nNo LICENSE found (bundle, dist-info, or repo root)."
               
         dialog = QDialog(self)
         dialog.setWindowTitle("License")
@@ -929,7 +864,6 @@ class MainWindow(QMainWindow):
         self.save_trace_action_f_a_n.setEnabled(self.cnm is not None and self.cnm.estimates.F_dff is not None)
         self.save_trace_action_f_g_n.setEnabled(self.cnm is not None and self.cnm.estimates.idx_components is not None and self.cnm.estimates.F_dff is not None)
         self.save_mescroi_action.setEnabled(self.cnm is not None and self.cnm.estimates.idx_components is not None)
-        self.bg_action.setEnabled(self.cnm is not None and self.cnm.estimates.b is not None)
         self.shifts_action.setEnabled(self.cnm is not None and self.cnm.estimates.shifts is not None and len(self.cnm.estimates.shifts) > 0)
         self.temporal_widget.time_slider.setEnabled(self.cnm is not None)
         self.temporal_widget.time_spinbox.setEnabled(self.cnm is not None)
@@ -1895,6 +1829,12 @@ class TopWidget(QWidget):
             temparr = getattr(cnm.estimates, array_name)
             if (temparr is not None) :
                 selectable_array_names.append(array_name)
+        if cnm.estimates.f is not None:
+            numbackround=cnm.estimates.f.shape[0]
+        else:
+            numbackround=0 
+        for i in range(numbackround):
+            selectable_array_names.append(f'F{i} (Bg)')
         if self.mainwindow.orig_trace_array is not None:
             selectable_array_names.append('Data')
         if self.mainwindow.orig_trace_array_neuropil is not None:
@@ -1967,7 +1907,7 @@ class TopWidget(QWidget):
 
     def _get_trace(self, index, array_text, rlavr_width):    
             if array_text == 'C':
-                ctitle=f'Temporal Component ({index})'
+                ctitle=f'Temporal component ({index})'
             elif array_text == 'F_dff':
                 ctitle=f'Detrended \u0394F/F ({index})'
             elif array_text == 'YrA':
@@ -1978,14 +1918,19 @@ class TopWidget(QWidget):
                 ctitle=f'Mean fluorescence under contour ({index})'
             elif array_text== 'Data neuropil':
                 ctitle=f'Mean fluorescence outside contours'
+            elif array_text[0] == 'F' and array_text.endswith('(Bg)'):
+                bgindex=int(array_text[1:-5])
+                ctitle=f'Background component {bgindex} (temporal)'
             else:
-                ctitle=f'Temporal Component ({array_text}, {index})'
+                ctitle=f'Temporal ({array_text}, {index})'
             
             #array_names = ['C', 'f', 'YrA', 'F_dff', 'R', 'S', 'noisyC', 'C_on']
             if array_text == 'Data':
                 y=self.mainwindow.orig_trace_array[index, :]
             elif array_text== 'Data neuropil':
                 y=self.mainwindow.orig_trace_array_neuropil
+            elif array_text[0] == 'F' and array_text.endswith('(Bg)'):
+                y = self.mainwindow.cnm.estimates.f[bgindex, :]
             else:
                 y=getattr(self.mainwindow.cnm.estimates, array_text)[index, :]
                 if len(y) > self.mainwindow.num_frames:
@@ -2008,14 +1953,20 @@ class TopWidget(QWidget):
             'C_on': '?', 
             'Data': 'Original fluorescence trace calculated from contour polygons', 
             'Data neuropil': 'Original fluorescence trace neuropil mean', 
-            '-': 'No right axis displayed'}
+            '-': 'No right axis displayed', 
+            'F0 (Bg)': 'Background component 0 (temporal)', 
+            'F1 (Bg)': 'Background component 1 (temporal)', 
+            'F2 (Bg)': 'Background component 2 (temporal)', 
+            }
         
         index = self.mainwindow.selected_component
         array_text=self.array_selector.currentText()
-        self.array_selector.setToolTip(tooltips[array_text]) 
+        tt = tooltips.get(array_text, '')
+        self.array_selector.setToolTip(tt) 
         
         array_text2=self.array_selector2.currentText()
-        self.array_selector2.setToolTip(tooltips[array_text2] + ' (right axis)') 
+        tt = tooltips.get(array_text2, '')
+        self.array_selector2.setToolTip(tt + ' (right axis)') 
 
         y, ctitle=self._get_trace( index, array_text, self.rlavr_spinbox.value())
         self.temporal_view.setLabel('left', f'{array_text} value')     
@@ -2504,15 +2455,15 @@ class ScatterWidget(QWidget):
         if cnme.idx_components is not None:
             colors = ['green' if i in cnme.idx_components else 'red' for i in range(num_components)]
         else:
-            colors = plt.cm.viridis(np.linspace(0, 1, num_components))
+            colors = ['gray' for i in range(num_components)]
         self.colors=colors
         self.x = cnme.cnn_preds
         self.y = cnme.r_values
         z = np.log10(cnme.SNR_comp)
         self.z = np.where(np.isfinite(z), z, 0)
-        self.s=self.z*0+10
+        self.markersize=self.z*0+10
         self.alpha=self.z*0+0.4
-        self.plt_scatter = self.plt_ax.scatter(self.x, self.y, self.z, c=self.colors, s=self.s, alpha=self.alpha, picker=5)
+        self.plt_scatter = self.plt_ax.scatter(self.x, self.y, self.z, c=self.colors, s=self.markersize, alpha=self.alpha, picker=5)
         
         self.plt_annot = self.plt_figure.text(0.00, 1.00, "",  va='top', ha='left')
         self.plt_annot.set_fontsize(8)
@@ -2588,8 +2539,8 @@ class ScatterWidget(QWidget):
             color = 'magenta'     
         colors=self.colors.copy()
         colors[index]=color
-        s=self.s.copy()
-        s[index]=30
+        ms=self.markersize.copy()
+        ms[index]=30
         #alpha=self.alpha.copy()
         #alpha[index]=1.0
         
@@ -2597,7 +2548,7 @@ class ScatterWidget(QWidget):
         self.plt_selected_scatterpoint.set_color(color)
         
         self.plt_scatter.set_color(colors)
-        self.plt_scatter.set_sizes(s)
+        self.plt_scatter.set_sizes(ms)
         #self.plt_scatter.set_alpha(alpha)
         #funny things happen here. plt_selected_scatterpoint is alway shown behind the scatter, often covered.
         #setting alpha and having alpha[index]=1 on the scatter makes 'random' points of the scatter nontransparent also depending of the display angle of the axes.

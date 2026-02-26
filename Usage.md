@@ -68,6 +68,7 @@ Under the "Plot" section, you can select the quantities to be plotted for the se
 * `C`: Denoised calcium trace (Temporal component)
 * `S`: Spike count estimate
 * `YrA`: Residual of the trace
+* `F0`, `F1`: Background components (temporal)
 * Others if computed (see "Compute" section)
     * `F_dff`: Estimated ΔF/F trace
     * `Data`: Mean fluorescence of the original movie under the component contour
@@ -104,7 +105,7 @@ Under "Display" select the quantity to display (at the selected timepoint):
 * `RCM`: Reconstructed movie
 * `RCB`: Reconstructed background
 * `Residuals`: Difference of the original data and the RCM and RCB
-* `B0`, `B1`: Background components
+* `B0`, `B1`: Background components (spatial)
 
 "Zoom" centers the view on the selected component, with zoom corresponding to estimated neuron diameter. "Auto" will automatically center and zoom when a new component is selected. <br>
 
