@@ -29,4 +29,4 @@ Pluvianus is distributed under the MIT License. If you use Pluvianus in your wor
 - [CaImAn](https://caiman.readthedocs.io/en/latest/) – Calcium imaging analysis toolkit with motion correction and source extraction.
 - [pynapple](https://pynapple.org/index.html) – Time series analysis for neuroscience data.
 - [PyQtGraph](https://www.pyqtgraph.org/) – Interactive plotting library for scientific data.
-- [mesmerize-core](https://github.com/nel-lab/mesmerize-core) – Batch management of CaImAn calculations. Pluvianus works well alongside mesmerize-core (not a dependency).
+- [mesmerize-core](https://github.com/nel-lab/mesmerize-core) – Batch management of CaImAn calculations and parameter search. Pluvianus works well alongside mesmerize-core, but it is not a dependency.
