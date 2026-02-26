@@ -298,7 +298,7 @@ class MainWindow(QMainWindow):
         main_layout = GripSplitter(Qt.Vertical, theme='dark' if self.is_dark_theme else 'light')
         self.setCentralWidget(main_layout)
         
-        self.temporal_widget = TopWidget(self, self)
+        self.temporal_widget = TemporalWidget(self, self)
         main_layout.addWidget(self.temporal_widget)
         
         bottom_layout_splitter = GripSplitter(theme='dark' if self.is_dark_theme else 'light')
@@ -821,6 +821,8 @@ class MainWindow(QMainWindow):
         QApplication.processEvents()
         self.save_state()
         self.update_all()
+        vb = self.temporal_widget.temporal_view.getViewBox()
+        vb.autoRange()
         progress_dialog.setValue(100)
         progress_dialog.setLabelText('Done.')
         progress_dialog.close()
@@ -1514,7 +1516,7 @@ class MainWindow(QMainWindow):
             if state['path'] is not None and os.path.exists(state['path']):
                 self.hdf5_file = state['path']
 
-class TopWidget(QWidget):
+class TemporalWidget(QWidget):
     def __init__(self, main_window: MainWindow, parent=None):
         super().__init__(parent)
         self.mainwindow = main_window
