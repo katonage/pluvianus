@@ -5,7 +5,7 @@ A standalone GUI for browsing, editing, and manually verifying CaImAn results.
 *"Seeing is believing..."*
 
 ## Highlights
-- Standalone Qt GUI ([example screenshot](https://github.com/katonage/pluvianus/blob/main/pluvianusGUI.png))
+- Standalone Qt GUI ([example screenshot](https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI.png))
 - Spatial and temporal views
 - Interactive scatter plot of component metrics
 - Visualization of extracted traces alongside original data
@@ -19,10 +19,10 @@ Pluvianus is distributed under the MIT License. If you use Pluvianus in your wor
 
 ## Table of Contents
 
-- [Installation](Installation.md)
-- [Usage](Usage.md)
-- [Tutorial](Tutorial.md)
-- [Contributing](Contributing.md)
+- [Installation](docs/Installation.md)
+- [Usage](docs/Usage.md)
+- [Tutorial](docs/Tutorial.md)
+- [Contributing](docs/Contributing.md)
 
 ## Related repositories
 

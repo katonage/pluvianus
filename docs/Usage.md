@@ -20,7 +20,7 @@ You can also launch Pluvianus directly with the CaImAn `.hdf5` result file and `
 * This will create the two necessary files in the `caiman_data\temp` folder:
   * `demo_pipeline_results.hdf5`: result file of the CNMF algorithm.
   * `Sue_2x_3000_40_-46_els__d1_170_d2_170_d3_1_order_F_frames_3000.mmap`: motion-corrected, memory‑mapped movie data file.
-* Launch Pluvianus as described above, and open these two files. You should see a window similar to this [example screenshot](https://github.com/katonage/pluvianus/blob/main/pluvianusGUI.png).
+* Launch Pluvianus as described above, and open these two files. You should see a window similar to this [example screenshot](https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI.png).
 
 ### OnACID
 * Run the [demo_OnACID_mesoscope.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_OnACID_mesoscope.ipynb) notebook.
