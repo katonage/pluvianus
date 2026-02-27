@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tempfile
 import time
+from datetime import datetime
+from dateutil.tz import tzlocal
 import uuid
 
 import caiman as cm # type: ignore
@@ -20,6 +22,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
 import pynapple as nap
+import pynwb
 
 import pyqtgraph as pg
 from PySide6 import __version__ as PySide6_version
@@ -715,7 +718,7 @@ class MainWindow(QMainWindow):
             else:
                 previ='.'
         
-            filename, _ = QFileDialog.getOpenFileName(self, 'Open CaImAn HDF5 File', previ, 'HDF5 Files (*.hdf5)')
+            filename, _ = QFileDialog.getOpenFileName(self, 'Open CaImAn HDF5 File', previ, 'HDF5 Files (*.hdf5);;NWB Files (*.nwb)')
 
             if not filename:
                 return
@@ -734,34 +737,64 @@ class MainWindow(QMainWindow):
         progress_dialog.show()
         QApplication.processEvents()
 
-        # Use file checker before loading to test if file is a valid CaImAn file and to it is an OnACID or CNMF file.
-        file_checker = CaImAnFileChecker()
-        file_checker.check_file(filename)
-        if not file_checker.is_likely_correct:
-            print('Error: File is not a valid CaImAn file:', filename)
-            progress_dialog.close()
-            QMessageBox.critical(self, 'Error opening file', 'File is not a valid CaImAn file: ' + filename)
-            return
+        if not filename.endswith('.nwb'):
+            # Use file checker before loading to test if file is a valid CaImAn file and to it is an OnACID or CNMF file.
+            file_checker = CaImAnFileChecker()
+            file_checker.check_file(filename)
+            if not file_checker.is_likely_correct:
+                print('Error: File is not a valid CaImAn file:', filename)
+                progress_dialog.close()
+                QMessageBox.critical(self, 'Error opening file', 'File is not a valid CaImAn file: ' + filename)
+                return
+            nwb_fileformat = False
+        else:
+            try:
+                io = pynwb.NWBHDF5IO(filename, 'r')
+                pynwb.validate(io=io)
+            except Exception as e:
+                io.close()
+                print('Error: File is not a valid pynwb file:', filename)
+                print(str(e))
+                progress_dialog.close()
+                QMessageBox.critical(self, 'Error opening file', 'File is not a valid pynwb file: ' + filename + '\nError details:\n' + str(e))
+                return
+            try:
+                nwb = io.read()
+                ophys = nwb.processing['ophys']
+                temp_rrs_group = ophys.data_interfaces['Fluorescence'].roi_response_series
+                temp_tserie=nwb.acquisition['TwoPhotonSeries']
+                io.close()                
+            except Exception as e:
+                io.close()
+                print('Error: NWB file :', filename, 'should have ophys processing module with Fluorescence ROIResponseSeries and TwoPhotonSeries acquisition, but it does not have:')
+                print(str(e))
+                progress_dialog.close()
+                QMessageBox.critical(self, 'Error opening file', 'NWB file should have ophys processing module with Fluorescence ROIResponseSeries and TwoPhotonSeries acquisition, but it does not have:\n' + str(e))
+                return
+            nwb_fileformat = True
         
         progress_dialog.setValue(12)
         progress_dialog.setLabelText('Opening CNMF file...')
         QApplication.processEvents()
         
         try:      
-            if(file_checker.is_online):
-                loaded_cnm = cnmf.online_cnmf.load_OnlineCNMF(filename)
-                print('File loaded (OnlineCNMF):', filename)
-            else:
+            if (nwb_fileformat or not file_checker.is_online):
+                print('Loading CNMF file...')
                 loaded_cnm = cnmf.cnmf.load_CNMF(filename)
                 print('File loaded (CNMF):', filename)
+            else:
+                loaded_cnm = cnmf.online_cnmf.load_OnlineCNMF(filename)
+                print('File loaded (OnlineCNMF):', filename)
         except Exception as e:
-            print('Could not load file')
+            print('Could not load file, because error:')
+            print(str(e))
             progress_dialog.close()
-            QMessageBox.critical(self, 'Error opening file', 'File could not be opened: ' + filename)
+            QMessageBox.critical(self, 'Error opening file', 'File could not be opened: ' + filename + '\nError details:\n' + str(e))
             return
 
         self.cnm= loaded_cnm
-        self.online = file_checker.is_online
+        self.online = nwb_fileformat or file_checker.is_online
+        #self.nwb_fileformat = nwb_fileformat
         self.hdf5_file = filename
         self.file_changed = False
         self.data_file = ''
@@ -910,7 +943,16 @@ class MainWindow(QMainWindow):
                 if result == QMessageBox.No:
                     return
             # Implement save logic here
-            self.cnm.save(target_filename)
+            if target_filename.endswith('.nwb'):
+                starttime=datetime.now(tzlocal()) #TODO get it from somewhere
+                saveraw=None
+                if hasattr(self.cnm, 'mmap_file') and self.cnm.mmap_file is not None and os.path.exists(self.cnm.mmap_file):
+                    saveraw=self.cnm.mmap_file
+                elif self.data_file is not None and os.path.exists(self.data_file):
+                    saveraw=self.data_file
+                self.cnm.estimates.save_NWB(target_filename, session_start_time=starttime, raw_data_file=saveraw)
+            else:
+                self.cnm.save(target_filename)
             self.hdf5_file = target_filename
             self.file_changed = False
             print('File saved as:', target_filename)
@@ -918,7 +960,7 @@ class MainWindow(QMainWindow):
             self.update_title()
 
     def save_file_as(self):
-        filename, _ = QFileDialog.getSaveFileName(self, 'Save CaImAn File As', self.hdf5_file, 'HDF5 Files (*.hdf5)')
+        filename, _ = QFileDialog.getSaveFileName(self, 'Save CaImAn File As', self.hdf5_file, 'HDF5 Files (*.hdf5);;NWB Files (*.nwb)')
         if filename:
             self.save_file(target_filename=filename, ignore_overwrite_warning=True)
 
@@ -929,11 +971,14 @@ class MainWindow(QMainWindow):
             return
         if data_path is None or data_path is False:        
             suggested_file = None
-            for ext in ['.mmap', '.h5']:
-                previ=os.path.dirname(self.hdf5_file)
-                suggested_file = next((f for f in glob.glob(os.path.join(previ, '*' + ext)) if os.path.isfile(f)), None)
-                if suggested_file is not None:
-                    break
+            if suggested_file is None:
+                for ext in ['.mmap', '.h5']:
+                    previ=os.path.dirname(self.hdf5_file)
+                    suggested_file = next((f for f in glob.glob(os.path.join(previ, '*' + ext)) if os.path.isfile(f)), None)
+                    if suggested_file is not None:
+                        break
+            if hasattr(self.cnm, 'mmap_file') and self.cnm.mmap_file is not None and os.path.exists(self.cnm.mmap_file):
+                suggested_file = self.cnm.mmap_file
             if suggested_file is None:
                 suggested_file = os.path.dirname(self.hdf5_file)
             data_file, _  = QFileDialog.getOpenFileName(self, 'Open Movement Corrected Data Array File (.mmap, .h5)', suggested_file, 'Memory mapped files (*.mmap);;Movie file (*.h5);;All Files (*)')
@@ -955,7 +1000,14 @@ class MainWindow(QMainWindow):
         QApplication.processEvents()
         
         print(f'Loading mmap ({os.path.basename(data_file)})')
-        Yr, dims, T = cm.load_memmap(data_file)
+        if data_file.endswith('.nwb'):
+            print(f'Warning: NWB files are not supported for loading data arrays. Please use a .mmap or .h5 file instead to load movement corrected data.')
+            QMessageBox.critical(self, 'Unsupported file type', f'NWb files are not supported for loading data arrays. Please use a .mmap or .h5 file instead to load movement corrected data.')
+            progress_dialog.close()
+            return
+            #TODO open and extract from NWB into a new mmap file and load that
+        else:   
+            Yr, dims, T = cm.load_memmap(data_file)
         if T != self.num_frames or dims[0] != self.dims[1] or dims[1] != self.dims[0]:
             progress_dialog.close()
             QMessageBox.critical(self, 'Error loading data', f'Incompatible data dimensions: expected {self.num_frames} frames x {self.dims[0]} x {self.dims[1]} pixels, but got {T} frames x {dims[0]} x {dims[1]} pixels.')
@@ -2148,7 +2200,7 @@ class ScatterWidget(QWidget):
         head_label.setStyleSheet('font-weight: bold; margin-top: 0px;')
         threshold_layout.addWidget(head_label)
         self.evaluate_button = QPushButton('Evaluate')
-        self.evaluate_button.setToolTip('Accept or reject components based on these threshold values (filter_components())')
+        self.evaluate_button.setToolTip('Accept or reject components based on these threshold values (filter_components())\nNeeds Open Data Array to function.')
         threshold_layout.addWidget(self.evaluate_button)
         
         threshold_layout.addWidget(QLabel('  SNR_lowest:'))
@@ -2574,14 +2626,15 @@ class ScatterWidget(QWidget):
         if not cnme.idx_components is None:
             self.good_label.setText(f'    Good: {len(cnme.idx_components)}')
             self.good_label.setEnabled(True)
-            self.bad_label.setText(f'    Bad: {len(cnme.idx_components_bad)}')
-            self.bad_label.setEnabled(True)  
         else:
             self.good_label.setText('    Good: --')
             self.good_label.setEnabled(False)
+        if not cnme.idx_components_bad is None:
+            self.bad_label.setText(f'    Bad: {len(cnme.idx_components_bad)}')
+            self.bad_label.setEnabled(True)    
+        else:
             self.bad_label.setText('    Bad: --')
-            self.bad_label.setEnabled(False)   
-
+            self.bad_label.setEnabled(False)
 
 class SpatialWidget(QWidget):
     def __init__(self, main_window: MainWindow, parent=None):

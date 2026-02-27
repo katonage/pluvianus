@@ -71,7 +71,7 @@ Under the "Plot" section, you can select the quantities to be plotted for the se
 * `F0`, `F1`: Background components (temporal)
 * Others if computed (see "Compute" section)
     * `F_dff`: Estimated ΔF/F trace
-    * `Data`: Mean fluorescence of the original movie under the component contour
+    * `Data`: Mean fluorescence of the original movie under the component contour. Can be calculated in the compute menu after data array has been loaded.
 
 You can also apply a running average to the data.<br>
 "Y fit all": Rescales the plot vertically to include all traces. Use this to compare absolute amplitudes of the components.<br>
@@ -125,7 +125,9 @@ Right-click on the plot to open a context menu allowing you to export the scene.
 A 3D scatter plot displays all components, using three evaluation metrics as axes. Clicking on a point selects it on the Temporal and Spatial Widgets. Good components are displayed as green points, whereas bad components are displayed as red points.
 
 In the Assignment section, use "Good" and "Bad" to manually accept or reject the selected component, regardless of evaluation thresholds. Keyboard shortcuts: `g` for Good, `b` for Bad.<br>
-In the Thresholds section you can set two thresholds ("lowest" and "min") per metric. A component is classified as good if it exceeds all "lowest" thresholds and at least one "min" threshold, unless manually overridden as above. Press "Evaluate" to apply the current thresholds (uses CaImAn's `filter_components()`).
+In the Thresholds section you can set two thresholds ("lowest" and "min") per metric. A component is classified as good if it exceeds all "lowest" thresholds and at least one "min" threshold, unless manually overridden as above. 
+
+Press "Evaluate" to apply the current thresholds (uses CaImAn's `filter_components()`). This function needs a data array to be loaded first.
 
 ### File menu
 * `Open CaImAn HDF5 File`: Loads the saved estimates object from CNMF or OnACID analyses.
