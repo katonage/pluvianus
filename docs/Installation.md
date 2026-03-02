@@ -30,10 +30,11 @@ Steps:
 ## System Requirements
 * Refer to CaImAn's system requirements: [CaImAn Installation](https://caiman.readthedocs.io/en/latest/Installation.html)
 * At least an HD display is recommended.
+* Windows, Linux, and macOS 13 or higher are supported.
 
 ## Tested on
-* Windows, Anaconda3. 
-* macOS 13 or higher, Anaconda3 
+* Windows 11, Anaconda3. 
+* macOS 13, Anaconda3 
 * CaImAn 1.11.4 - 1.13.1  
 * PySide6 6.9.2 - 6.10.2   
 (With PySide 6.9.1 the application freezes.)
