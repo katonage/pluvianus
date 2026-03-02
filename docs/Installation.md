@@ -1,8 +1,8 @@
 # Installation
 
 This package is intended for installation within an existing CaImAn conda environment. Please refer to the [CaImAn installation instructions](https://caiman.readthedocs.io/en/latest/Installation.html) to set up this environment. 
-
-For Windows users new to CaImAn, see the PDF guide [Note on CaImAn setup on Windows](./Note%20on%20CaImAn%20setup%20on%20Windows.pdf) for step-by-step installation instructions.
+* For Windows users new to CaImAn, see the PDF guide [Note on CaImAn setup on Windows](./Note%20on%20CaImAn%20setup%20on%20Windows.pdf) for step-by-step installation instructions.
+* For macOS users new to CaImAn, see the PDF guide [Note on CaImAn setup on macOS](./Note%20on%20CaImAn%20setup%20on%20macOS.pdf) for step-by-step installation instructions.
 
 Do not install Pluvianus outside of the CaImAn environment!
 

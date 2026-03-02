@@ -2764,13 +2764,13 @@ class SpatialWidget(QWidget):
         array_text=self.channel_combo.currentText()
         if array_text == 'MaxResNone':
             idx=self.mainwindow.max_res_none_idx[x,y]
-            tex+=f'Time idx: {idx}\n'
+            tex+=f'Frame: {idx}\n'
         elif array_text == 'MaxResGood':
             idx=self.mainwindow.max_res_good_idx[x,y]
-            tex+=f'Time idx: {idx}\n'
+            tex+=f'Frame: {idx}\n'
         elif array_text == 'MaxResAll':
             idx=self.mainwindow.max_res_all_idx[x,y]
-            tex+=f'Time idx: {idx}\n'            
+            tex+=f'Frame: {idx}\n'            
             
         self.data_info_label.setText(tex)
         
