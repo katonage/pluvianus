@@ -32,7 +32,9 @@ Steps:
 * At least an HD display is recommended.
 
 ## Tested on
-* PC, Windows, Anaconda3. 
+* Windows, Anaconda3. 
+* macOS 13 or higher, Anaconda3 
 * CaImAn 1.11.4 - 1.13.1  
 * PySide6 6.9.2 - 6.10.2   
 (With PySide 6.9.1 the application freezes.)
+(macOS 12 is not compatible with the used QT version)

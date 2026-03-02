@@ -11,20 +11,20 @@ Use the File menu to open a `.hdf5` file exported by the CaImAn package (`Ctrl+O
 ## Command Line Usage
 You can also launch Pluvianus directly with the CaImAn `.hdf5` result file and `.mmap` data file by specifying them as command-line arguments: 
    ```bash
-   pluvianus -f results.hdf5 -d movie.mmap
+   pluvianus -f results.hdf5 -d movement_corrected_data_array.mmap
    ```
 
 ## Opening Demo Files
 ### CNMF
-* Run all cells in the CaImAn [demo_pipeline.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_pipeline.ipynb) notebook (you can also find a copy of this file within your already installed CaImAn environment).
+* Run all cells in the CaImAn [demo_pipeline.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_pipeline.ipynb) notebook you can find within your `caiman_data/demos/notebooks` folder.
 * This will create the two necessary files in the `caiman_data\temp` folder:
   * `demo_pipeline_results.hdf5`: result file of the CNMF algorithm.
   * `Sue_2x_3000_40_-46_els__d1_170_d2_170_d3_1_order_F_frames_3000.mmap`: motion-corrected, memory‑mapped movie data file.
 * Launch Pluvianus as described above, and open these two files. You should see a window similar to this [example screenshot](https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI.png).
 
 ### OnACID
-* Run the [demo_OnACID_mesoscope.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_OnACID_mesoscope.ipynb) notebook.
-* To save results, add  `cnm.save('demo_OnACID_mesoscope_results.hdf5')` to the end of the notebook.
+* Run the [demo_OnACID_mesoscope.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_OnACID_mesoscope.ipynb) notebook you can find within your `caiman_data/demos/notebooks` folder.
+* To save results, add/uncomment  `cnm.save('demo_OnACID_mesoscope_results.hdf5')` to the end of the notebook.
 * This will create the results file.
 * Launch Pluvianus as described above, and open this file.
 * In Pluvianus, launch the `Compute Data Array for OnACID Files` menu option.
@@ -33,7 +33,7 @@ You can also launch Pluvianus directly with the CaImAn `.hdf5` result file and `
 
 ### CNMF-E
 Microendoscopic 1p data (CNMF-E) is partially supported.
-* Run all cells in the CaImAn [demo_pipeline_cnmfE.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_pipeline_cnmfE.ipynb) notebook.
+* Run all cells in the CaImAn [demo_pipeline_cnmfE.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_pipeline_cnmfE.ipynb) notebook you can find within your `caiman_data/demos/notebooks` folder.
 * This will create the two necessary files in the `caiman_data\temp` folder:
   * `demo_pipeline_cnmfe_results.hdf5`: result file of the CNMFE algorithm.
   * `data_endoscope_rig__d1_128_d2_128_d3_1_order_F_frames_1000.mmap`: motion-corrected, memory‑mapped movie data file.
