@@ -311,7 +311,7 @@ class MainWindow(QMainWindow):
         
         self.spatial_widget = SpatialWidget(self, self)
         bottom_layout_splitter.addWidget(self.spatial_widget)
-        self.spatial_widget2 = SpatialWidget(self, self)
+        self.spatial_widget2 = SpatialWidget(self, self, add_sync_checkbox=True)
         bottom_layout_splitter.addWidget(self.spatial_widget2)
         
         main_layout.addWidget(bottom_layout_splitter)
@@ -2637,7 +2637,7 @@ class ScatterWidget(QWidget):
             self.bad_label.setEnabled(False)
 
 class SpatialWidget(QWidget):
-    def __init__(self, main_window: MainWindow, parent=None):
+    def __init__(self, main_window: MainWindow, parent=None, add_sync_checkbox: bool = False):
         super().__init__(parent)
         self.mainwindow = main_window
         
@@ -2677,6 +2677,12 @@ class SpatialWidget(QWidget):
         self.colorbar_reset_button.setToolTip('Reset colorbar to min and max of displayed data')
         self.colorbar_reset_button.setEnabled(False)
         left_layout.addWidget(self.colorbar_reset_button) # Colorbar reset button initialized
+        
+        self.sync_axes_button = None
+        if add_sync_checkbox:
+            self.sync_axes_button = QPushButton("Sync Axes")
+            self.sync_axes_button.setToolTip("Set this view's axes to match the left spatial view. One-time action.")
+            left_layout.addWidget(self.sync_axes_button)
 
         head_label=QLabel('Contours:')
         head_label.setStyleSheet('font-weight: bold;')
@@ -2708,7 +2714,8 @@ class SpatialWidget(QWidget):
         self.spatial_avr_spinbox.valueChanged.connect(self.on_spatial_avr_spinbox_changed)
         self.spatial_view.sceneObj.sigMouseMoved.connect(self.on_mouseMoveEvent)
         self.colorbar_reset_button.clicked.connect(self.on_colorbar_reset_button_clicked)
- 
+        if add_sync_checkbox:
+            self.sync_axes_button.clicked.connect(self.on_sync_axes_button_clicked)
     
     def on_mouseMoveEvent(self, event):
         # called on mouse move over spatial view
@@ -2789,6 +2796,16 @@ class SpatialWidget(QWidget):
     def on_colorbar_reset_button_clicked(self):
         self.update_spatial_view_image(setLUT=True)
         
+    def on_sync_axes_button_clicked(self):
+        #One-time copy of view range from spatial_widget (view 1) to this widget (view 2).
+        src = self.mainwindow.spatial_widget.spatial_view.getViewBox()
+        dst = self.spatial_view.getViewBox()
+
+        xR, yR = src.viewRange()
+
+        dst.disableAutoRange()
+        dst.setRange(xRange=xR, yRange=yR, padding=0.0, update=True)
+            
     def perform_spatial_zoom_on_component(self, index):
         zoomwindow=self.mainwindow.neuron_diam*1.5
         coord=self.mainwindow.component_centers[index,:]
