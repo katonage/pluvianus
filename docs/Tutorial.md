@@ -1,44 +1,57 @@
 # Tutorial
-Here we present a few examples, how Pluvianus can be used to inspect results of the source extraction algorithm. We use output of the CaImAn’s demo_pipeline throughout.
+Here we present examples demonstrating how Pluvianus can be used to inspect the results of the source extraction algorithm. Throughout this tutorial, we use the output of the CaImAn demo_pipeline.
 
-Load the `.hdf5` file of your CaImAn result and also load the corresponding movement corrected movie data array (`.mmap` file). In the `Compute menu` generate both the original fluorescence traces (`Compute Original Fluorescence traces` ) and the ΔF/F traces (`Detrend ΔF/F`, if not previously computed).
+Load the `.hdf5` file containing your CaImAn results and also load the corresponding movement-corrected movie data array (`.mmap` file). In the `Compute menu` generate both the original fluorescence traces (`Compute Original Fluorescence traces` ) and the ΔF/F traces (`Detrend ΔF/F`, if not previously computed).
 
 ## Inspecting Components
-Visualizing calcium transients and their footprints is fundamental for evaluating the quality of extracted components. For this reason, it is important to inspect representative transients and efficiently cycle through them. Check the `Auto` option in both the temporal and spatial widgets so that they automatically focus on the selected component. This setting shifts the time axis to the period of maximal activity for that component and zooms the spatial widget to its footprint. 
-* Select the `Compound` order at the component selection, so that you visit the cells from best to worst quality, corresponding to the diagonal of the scatterplot. Select the top right cell on the scatterplot, cycle cells with the `Down` button (keyboard `d`).
-* Load the `Data` and `C` or `F_dff` curves in the temporal widget. This way you can compare shape and signal-to-noise ratio of the raw and the evaluated transients. By displaying each component with identical y-axis scaling (`Y fit all` buttons), it becomes easier to distinguish components that stand out from the noise from those that merely represent fitting noise fluctuations.
-* Having the raw movie (`Data`) loaded, the spatial widget allows direct verification of whether the calculated footprint (contour) matches the morphology of the cell when it becomes active. 
+Visualizing calcium transients and their spatial footprints is fundamental for evaluating the quality of extracted components. It is therefore important to inspect representative transients across temporal, spatial, and quantitative dimensions, and efficiently cycle through each of them.
+
+Enable the `Auto` option in both the temporal and spatial widgets so that they automatically focus on the selected component. This setting shifts the time axis to the period of maximal activity for that component and zooms the spatial widget to its footprint. 
+
+* Select the `Compound` order at the component selector so that cells are visited from best to worst quality, corresponding to the diagonal of the scatterplot. Select the top-right cell in the scatterplot and cycle through cells using the `Down` button (keyboard: down arrow).
+* Load the `Data` and either `C` or `F_dff` curves in the temporal widget. This enables direct comparison of the temporal profile and signal-to-noise characteristics of the raw fluorescence trace and the inferred activity signal. By displaying each component using identical y-axis scaling (`Y fit all` buttons), it becomes easier to distinguish components that rise above noise from those representing fitted noise fluctuations.
+* Having the raw movie (`Data`) loaded, the spatial widget enables verification of whether the calculated footprint (contour) matches the cell morphology during periods of activity.
 
 <p align="center"> <img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI.png" width="85%"> </p>
 
-## Assessing Baseline Subtraction and Component Quality
-Although temporal components identified by CNMF can be difficult to interpret in cases of overlap or high background, inspecting components with Pluvianus helps users assess whether the algorithm has correctly subtracted baseline fluctuations or overlaping components. 
-At cases of interest, you can drag the time axis to a particular period of activity and examine both the component’s activity and the surrounding regions in the spatial widget. To suppress noise, you may average the data both spatially and temporally. For example, here you can see that the active smaller cell gives crosstalk to the larger cell’s data as seen in the blue original fluorescence trace, which has been correctly removed by the CNMF and not apparent in the red ΔF/F trace.
+## Assessing Overlaps and Baseline Subtraction
+Temporal components identified by CNMF can be difficult to interpret in cases of spatial overlap or high background activity. Inspecting components in Pluvianus facilitates assessment of whether overlapping components or baseline fluctuations have been correctly separated across multiple complementary views.
+
+For cases of interest, drag the time axis to a specific period of activity and examine both the selected component and the surrounding regions in the spatial widget. To suppress noise, spatial and temporal averaging can be applied. For example, in the case shown below, activity from a smaller, active cell introduces crosstalk into the larger cell’s raw fluorescence trace (blue). This contamination is correctly removed by CNMF and is no longer apparent in the red ΔF/F trace.
 
 <p align="center"> <img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI_2.png" width="85%"> </p>
 
 ## Assessing completeness of component extraction
-Computing three different maximum residual images allows you to assess whether CaImAn’s algorithm performed correctly, and if calculation parameters were optimal. Use the `Compute Temporal Maximum of Residuals` calculation. This creates three images to display in the spatial widgets: 
-* `MaxResNone`: Maximum of residuals, only background subtracted. (Y- BG)
-* `MaxResGood`: Maximum of residuals having background and good components subtracted. (Y – BG – RCM(good))
-* `MaxResAll`: Maximum of residuals having background and all components subtracted. (Y – BG – RCM(all))
+Computing three different temporal maximum residual images allows assessment of whether the CaImAn source extraction algorithm performed correctly and whether parameter selection was appropriate.
 
-Pull the second spatial widget from the lower right edge using the three dots to display two of the calculated images side-by-side. Adjust colorbars if necessary. Use the `Sync Axes` button.
+Use the `Compute Temporal Maximum of Residuals` function. This generates three images that can be displayed in the spatial widgets: 
+* `MaxResNone`: Temporal maximum of residuals with only background subtracted. (Y- BG)
+* `MaxResGood`: Temporal maximum of residuals with background and accepted (good) components subtracted. (Y – BG – RCM(good))
+* `MaxResAll`: Temporal maximum of residuals with background and all components subtracted. (Y – BG – RCM(all))
 
-### Subtraction
-* Compare `MaxResNone` to `MaxResGood`. Check that all bright patches are delineated as good components and disappear on the subtracted image. Inspect the completeness of the subtraction. Where significant amount of activity remains on the subtracted image, look up and inspect original data at the `Frame` displayed with the cursor hovering over the feature.
+Open the second spatial widget from the lower-right corner (pull three-dots) to display two residual images side-by-side. Adjust colorbars if necessary and use the `Sync Axes` button to ensure spatial alignment.
+
+#### Subtraction
+Compare `MaxResNone` and `MaxResGood`. Verify that bright activity patches in `MaxResNone` correspond to accepted components and disappear in `MaxResGood`. Assess whether subtraction is complete. If structured residual activity remains under an accepted component in `MaxResGood`, inspect the corresponding time point in the original data at the `Frame` displayed with the cursor hovering over the feature.
+
 <p align="center"> <img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI_3.png" width="85%"> </p>
 
-### Completeness
-* Compare `MaxResGood` to `MaxResAll`. Adjust colorbars if necessary. Check the typical amplitude of the residual associated with components labelled as bad (red contours). On the `MaxResAll` image, all components should have been removed, ideally leaving no structured activity. Check if there is still activity not delineated as a component: if there is activity surpassing the typical activity of a bad component, the CaImAn source extraction algorithm parameters should be adjusted.
-
+####   Completeness
+Compare `MaxResGood` and `MaxResAll`. Adjust colorbars if necessary. Evaluate the typical residual amplitude associated with components labeled as bad (red contours). In `MaxResAll`, all modeled components should be removed, ideally leaving no structured residual activity. If activity remains that exceeds the typical residual level of rejected components, this suggests incomplete source extraction, and CaImAn parameter settings should be reconsidered.
 
 ## Component Evaluation Using Thresholds and Manual Review
-Use the scatterplot widget to optimize classification: it can be  rotated with the mouse to display the projection of interest and click-select borderline cases. Evaluating quality of these, the acceptance criteria thresholds can be refined.
-Upon changing the thresholds, the good/bad classification should be recalculated with the `Evaluate` button (uses CaImAn's `filter_components()`; data array should be loaded first).
-For manual classification, iterate through components in an order (e.g. from the highest SNR to the lowest SNR) and adjust classification manually using keyboard shortcuts (`b`, `g` keys, `up` and `down` arrows). The modified classifications can be written back to the CaImAn `.hdf5` file to support downstream analysis and subsequent pipeline steps. If scatterplot shows gray dots, use the `Compute Component Metrics` from the menu. This function needs a data array to be loaded first.
+Use the scatterplot widget to refine component classification. The plot can be rotated interactively to examine projections of interest, allowing identification and selection of borderline components. Evaluating quality of these, the acceptance criteria thresholds can be refined.
 
-<p align="center"> <img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI_4.png" width="85%"> </p>
+After adjusting classification thresholds, recalculate the good/bad labels using the Evaluate button (a data array must be loaded).
+
+For manual classification:
+* Iterate through components in a defined order (e.g., highest to lowest SNR).
+* Modify classification using keyboard shortcuts (`g` = good, `b` = bad; navigate with `Up` and `Down` arrows). 
+Updated classifications can be written back to the CaImAn `.hdf5` file to support downstream analyses and subsequent pipeline steps.
+
+If gray dots appear in the scatterplot, compute component metrics using `Compute Component Metrics` from the menu. This function needs a data array to be loaded first.
+
+<p align="center"> <img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI_4.png" width="65%"> </p>
 The figure was compiled from screenshot segments.
 
 ## See also

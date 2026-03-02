@@ -89,7 +89,7 @@ You can also apply a running average to the data.<br>
   * Drag with left mouse button to pan time and vertical axis independently.
   * Drag with right mouse button or scroll to zoom on a specific axis.
 * "A" Button: Hovering inside the view reveals an "A" button in the lower left, which fits the plot to all data horizontally and vertically.
-* Right-click on the plot to open a context menu allowing you to export the scene
+* Right-click on the plot to open a context menu allowing you to  change to 1-button mouse mode and to export the scene.
 
 **Timeline navigation:** <br>
 Scroll through time using the slider below the plot (shows both frame number and absolute time). Right of the timeline, specify the time window for temporal averaging in the Spatial Widget.
