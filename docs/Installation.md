@@ -38,3 +38,7 @@ Steps:
 * PySide6 6.9.2 - 6.10.2   
 (With PySide 6.9.1 the application freezes.)
 (macOS 12 is not compatible with the used QT version)
+
+## See also
+- [Usage](Usage.md)
+- [TOC](../README.md)

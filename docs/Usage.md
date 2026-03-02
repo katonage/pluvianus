@@ -168,3 +168,8 @@ If you require additional export formats, please submit a pull request.
 * `Ctrl-S`: Save to CaImAn HDF5 file.
 * `Ctrl-D`: Open motion-corrected data array (.mmap file).
 
+## See also
+- [Installation](Installation.md)
+- [Tutorial](Tutorial.md)
+- [TOC](../README.md)
+

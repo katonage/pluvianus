@@ -12,4 +12,7 @@ Before implementing larger changes, we encourage discussing them first.
 ## ❓ Questions and Support
 For usage questions, troubleshooting help, or workflow advice, use **[Discussions/Q&A](https://github.com/katonage/pluvianus/discussions/categories/q-a)**.<br>
 
+## See also
+- [Usage](Usage.md)
+- [TOC](../README.md)
 
