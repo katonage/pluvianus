@@ -9,7 +9,13 @@ Visualizing calcium transients and their footprints is fundamental for evaluatin
 * Load the “Data” and “C” or “F_dff” curves in the temporal widget. This way you can compare shape and signal-to-noise ratio of the raw and the evaluated transients. By displaying each component with identical y-axis scaling (“Y fit all” buttons), it becomes easier to distinguish components that stand out from the noise from those that merely represent fitting noise fluctuations.
 * Having the raw movie (“Data”) loaded, the spatial widget allows direct verification of whether the calculated footprint (contour) matches the morphology of the cell when it becomes active. 
 
-<img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI.png" width="600" align="center">
+<p align="center"> <img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI.png" width="80%"> </p>
+
+## Assessing Baseline Subtraction and Component Quality
+Although temporal components identified by CNMF can be difficult to interpret in cases of overlap or high background, inspecting components with Pluvianus helps users assess whether the algorithm has correctly subtracted baseline fluctuations or overlaping components. 
+At cases of interest, you can drag the time axis to a particular period of activity and examine both the component’s activity and the surrounding regions in the spatial widget. To suppress noise, you may average the data both spatially and temporally. For example, here you can see that the active smaller cell gives crosstalk to the larger cell’s data as seen in the blue original fluorescence trace, which has been correctly removed by the CNMF and not apparent in the red ΔF/F trace.
+
+<p align="center"> <img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI_2.png" width="80%"> </p>
 
 TODO further text
 
