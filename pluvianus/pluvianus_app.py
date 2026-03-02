@@ -1696,7 +1696,6 @@ class TemporalWidget(QWidget):
         self.temporal_zoom_button.setToolTip('Center view on the largest activity peak (max of C); scroll on the horizontal axis to adjust zoom')
         left_layout.addWidget(self.temporal_zoom_button)
         self.temporal_zoom_auto_checkbox = QCheckBox('Auto')
-        self.temporal_zoom_auto_checkbox.setStyleSheet('margin-left: 8px;')   
         self.temporal_zoom_auto_checkbox.setToolTip('Automatically centers view on the largest activity peak (max of C); scroll on the horizontal axis to adjust zoom')
         left_layout.addWidget(self.temporal_zoom_auto_checkbox)
         
@@ -1715,6 +1714,7 @@ class TemporalWidget(QWidget):
         # Create scroll area
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)  # Makes the scroll area resize with the window
+        scroll_area.setFixedWidth(105)
         #scroll_area.setStyleSheet('background-color: red;')
         #scroll_content.setStyleSheet('background-color: yellow;')
         #head_label.setStyleSheet('background-color: green;')
@@ -2669,7 +2669,6 @@ class SpatialWidget(QWidget):
         self.spatial_zoom_button.setToolTip('Center view on selected component, with zoom corresponding to neuron diameter')
         left_layout.addWidget(self.spatial_zoom_button)
         self.spatial_zoom_auto_checkbox = QCheckBox('Auto')
-        self.spatial_zoom_auto_checkbox.setStyleSheet('margin-left: 8px;')        
         self.spatial_zoom_auto_checkbox.setToolTip('Automatically centers view on selected component, with zoom corresponding to neuron diameter')
         left_layout.addWidget(self.spatial_zoom_auto_checkbox)
      
