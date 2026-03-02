@@ -9,7 +9,7 @@ Visualizing calcium transients and their footprints is fundamental for evaluatin
 * Load the “Data” and “C” or “F_dff” curves in the temporal widget. This way you can compare shape and signal-to-noise ratio of the raw and the evaluated transients. By displaying each component with identical y-axis scaling (“Y fit all” buttons), it becomes easier to distinguish components that stand out from the noise from those that merely represent fitting noise fluctuations.
 * Having the raw movie (“Data”) loaded, the spatial widget allows direct verification of whether the calculated footprint (contour) matches the morphology of the cell when it becomes active. 
 
-<img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI.jpg" width="600" align="center">
+<img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI.png" width="600" align="center">
 
 TODO further text
 
