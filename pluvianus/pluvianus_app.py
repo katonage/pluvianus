@@ -2052,6 +2052,7 @@ class TemporalWidget(QWidget):
         
         cnme=self.mainwindow.cnm.estimates
         if not cnme.r_values is None:
+            cnme.r_values = np.where(np.isfinite(cnme.r_values), cnme.r_values, 0.0)         
             r = cnme.r_values[index]
             max_r = np.max(cnme.r_values)
             min_r = np.min(cnme.r_values)
@@ -2062,6 +2063,7 @@ class TemporalWidget(QWidget):
             self.component_params_r.setToolTip(f'cnm.estimates.r_values[{index}]')
             self.component_params_r.setStyleSheet(f'color: {color}')
             
+            cnme.SNR_comp = np.where(np.isfinite(cnme.SNR_comp), cnme.SNR_comp, 0.0)
             max_SNR = np.max(cnme.SNR_comp)
             min_SNR = np.min(cnme.SNR_comp)
             if max_SNR == min_SNR:
@@ -2071,6 +2073,7 @@ class TemporalWidget(QWidget):
             self.component_params_SNR.setToolTip(f'cnm.estimates.SNR_comp[{index}]')
             self.component_params_SNR.setStyleSheet(f'color: {color}')
             
+            cnme.cnn_preds = np.where(np.isfinite(cnme.cnn_preds), cnme.cnn_preds, 0.0)
             max_cnn = np.max(cnme.cnn_preds)
             min_cnn = np.min(cnme.cnn_preds)
             if max_cnn == min_cnn:
@@ -2200,7 +2203,7 @@ class ScatterWidget(QWidget):
         head_label.setStyleSheet('font-weight: bold; margin-top: 0px;')
         threshold_layout.addWidget(head_label)
         self.evaluate_button = QPushButton('Evaluate')
-        self.evaluate_button.setToolTip('Accept or reject components based on these threshold values (filter_components())\nNeeds Open Data Array to function.')
+        self.evaluate_button.setToolTip('Accept or reject components based on threshold values (filter_components())\nRequires opening a data array to function.')
         threshold_layout.addWidget(self.evaluate_button)
         
         threshold_layout.addWidget(QLabel('  SNR_lowest:'))
@@ -2432,8 +2435,11 @@ class ScatterWidget(QWidget):
         
     def recreate_scatterplot(self):
         if self.mainwindow.cnm is None or self.mainwindow.cnm.estimates.r_values is None:
-            self.plt_figure.clf()
-            text='No evaluated components. Open data array to compute component metrics.'
+            self.plt_figure.clf()            
+            if self.mainwindow.cnm is not None and self.mainwindow.cnm.estimates.idx_components is None:
+                text='No evaluated components. \nOpen data array and perform Compute Component Metrics calculation.'
+            else:
+                text='No data loaded.'
             self.plt_ax = self.plt_figure.add_subplot(111)
             if self.mainwindow.is_dark_theme:
                 patch_color=(0.0/255, 0.0/255, 10.0/255, 127.0/255)

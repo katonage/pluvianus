@@ -9,12 +9,11 @@ A standalone GUI for browsing, editing, and manually verifying CaImAn results.
 - Spatial and temporal views
 - Interactive scatter plot of component metrics
 - Visualization of extracted traces alongside original data
-- Currently supports only 2D movies
 
 ## License
 Pluvianus is distributed under the MIT License. If you use Pluvianus in your work, please cite our associated publication:
 
-/Paper reference coming soon. TODO./
+/Paper reference coming soon. Please check back later./
 
 
 ## Table of Contents

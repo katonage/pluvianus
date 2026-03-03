@@ -34,7 +34,7 @@ Steps:
 
 ## Tested on
 * Windows 11, Anaconda3. 
-* macOS 13, Anaconda3   (macOS 12 is not compatible with the used QT version)
+* macOS 26, Anaconda3   (macOS 12 is not compatible with the used QT version)
 * CaImAn 1.11.4 - 1.13.1  
 * PySide6 6.9.2 - 6.10.2  (With PySide 6.9.1 the application freezes.)
 
