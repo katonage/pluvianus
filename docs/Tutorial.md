@@ -31,13 +31,17 @@ Use the `Compute Temporal Maximum of Residuals` function. This generates three i
 
 Open the second spatial widget from the lower-right corner (pull three-dots) to display two residual images side-by-side. Adjust colorbars if necessary and use the `Sync Axes` button to ensure spatial alignment.
 
-#### Subtraction
-Compare `MaxResNone` and `MaxResGood`. Verify that bright activity patches in `MaxResNone` correspond to accepted components and disappear in `MaxResGood`. Assess whether subtraction is complete. If structured residual activity remains under an accepted component in `MaxResGood`, inspect the corresponding time point in the original data at the `Frame` displayed with the cursor hovering over the feature.
-
 <p align="center"> <img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI_3.png" width="85%"> </p>
+<p align="center"> GUI reshaped for comparison of the residuals. </p>
 
-####   Completeness
-Compare `MaxResGood` and `MaxResAll`. Adjust colorbars if necessary. Evaluate the typical residual amplitude associated with components labeled as bad (red contours). In `MaxResAll`, all modeled components should be removed, ideally leaving no structured residual activity. If activity remains that exceeds the typical residual level of rejected components, this suggests incomplete source extraction, and CaImAn parameter settings should be reconsidered.
+#### Quality of Subtraction
+Compare `MaxResNone` and `MaxResGood`. Verify that bright activity patches in `MaxResNone` correspond to accepted components and disappear in `MaxResGood` (green arrows on example below). Assess whether subtraction is complete. If structured residual activity remains under an accepted component in `MaxResGood` (orange arrows), inspect the corresponding time point in the original data at the `Frame` displayed with the cursor hovering over the feature.
+
+####   Completeness of Component Detection
+Compare `MaxResGood` and `MaxResAll`. Adjust colorbars if necessary. Evaluate the typical residual amplitude associated with components labeled as bad (purple arrow on example below). In `MaxResAll`, all modeled components should be removed, ideally leaving no structured residual activity. Inspect residual activity on `MaxResAll` (red arrow). If activity remains that exceeds the typical residual level of rejected components, this suggests incomplete source extraction, and CaImAn parameter settings should be reconsidered.
+
+<p align="center"> <img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusExample_5.png" width="60%"> </p>
+<p align="center"> Example patch of a measurement demonstrating the three residuals. </p>
 
 ## Component Evaluation Using Thresholds and Manual Review
 Use the scatterplot widget to refine component classification. The plot can be rotated interactively to examine projections of interest, allowing identification and selection of borderline components. Evaluating quality of these, the acceptance criteria thresholds can be refined.
