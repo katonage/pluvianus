@@ -32,7 +32,7 @@ You can also launch Pluvianus directly with the CaImAn `.hdf5` result file and `
 * Launch the `Compute Component Metrics` and the `Detrend ΔF/F` menu options to complete the analysis.
 
 ### CNMF-E
-Microendoscopic 1p data (CNMF-E) is partially supported.
+Handling microendoscopic 1p data (CNMF-E) is partially supported.
 * Run all cells in the CaImAn [demo_pipeline_cnmfE.ipynb](https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_pipeline_cnmfE.ipynb) notebook you can find within your `caiman_data/demos/notebooks` folder.
 * This will create the two necessary files in the `caiman_data\temp` folder:
   * `demo_pipeline_cnmfe_results.hdf5`: result file of the CNMFE algorithm.
@@ -106,7 +106,7 @@ Under `Display` select the quantity to display (at the selected timepoint):
 * `RCB`: Reconstructed background
 * `Residuals`: Difference of the original data and the RCM and RCB
 * `B0`, `B1`: Background components (spatial)
-* Other static images can be calculated (see the compute menu) or loaded from a file.
+* Other static images can be calculated (see the compute menu) or loaded from a file. Reference information, such as genetically targeted red fluorescent labeling, can also be loaded into the `Max`/`Mean`/`Std` slots from a `.npy` file.
 
 `Zoom` centers the view on the selected component, with zoom corresponding to estimated neuron diameter. `Auto` will automatically center and zoom when a new component is selected. <br>
 
