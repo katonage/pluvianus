@@ -40,7 +40,7 @@ Compare `MaxResNone` and `MaxResGood`. Verify that bright activity patches in `M
 ####   Completeness of Component Detection
 Compare `MaxResGood` and `MaxResAll`. Adjust colorbars if necessary. Evaluate the typical residual amplitude associated with components labeled as bad (purple arrow on example below). In `MaxResAll`, all modeled components should be removed, ideally leaving no structured residual activity. Inspect residual activity on `MaxResAll` (red arrow). If activity remains that exceeds the typical residual level of rejected components, this suggests incomplete source extraction, and CaImAn parameter settings should be reconsidered.
 
-<p align="center"> <img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusExample_5.png" width="60%"> </p>
+<p align="center"> <img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusExample_5.png" width="75%"> </p>
 <p align="center"> Example patch of a measurement demonstrating the three residuals. </p>
 
 ## Component Evaluation Using Thresholds and Manual Review
@@ -53,10 +53,10 @@ For manual classification:
 * Modify classification using keyboard shortcuts (`g` = good, `b` = bad; navigate with `Up` and `Down` arrows). 
 Updated classifications can be written back to the CaImAn `.hdf5` file to support downstream analyses and subsequent pipeline steps.
 
-If gray dots appear in the scatterplot, compute component metrics using `Compute Component Metrics` from the menu. This function needs a data array to be loaded first.
+If gray dots appear in the scatterplot, use the `Compute Component Metrics` from the menu. This function needs a data array to be loaded first.
 
 <p align="center"> <img src="https://github.com/katonage/pluvianus/blob/main/docs/img/pluvianusGUI_4.png" width="65%"> </p>
-The figure was compiled from screenshot segments.
+<p align="center"> Assesing evaluation thresholds. The figure was compiled from screenshot segments. </p>
 
 ## See also
 - [Usage](Usage.md)
