@@ -13,7 +13,7 @@ A standalone GUI for browsing, editing, and manually verifying CaImAn results.
 ## License
 Pluvianus is distributed under the MIT License. If you use Pluvianus in your work, please cite our associated publication:
 
-/Paper reference coming soon. Please check back later./
+**Pluvianus: Interactive GUI for Exploration and Quality Control of CaImAn Calcium Imaging Analysis Results.** (2026) Katona, G., Dávid, A., Slézia, A., & Kaszás, A. _Journal of Open Research Software_, 14. [https://doi.org/10.5334/jors.623](https://doi.org/10.5334/jors.623)
 
 
 ## Table of Contents
