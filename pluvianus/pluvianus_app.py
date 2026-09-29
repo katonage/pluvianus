@@ -628,14 +628,18 @@ class MainWindow(QMainWindow):
 
     def on_about_action(self):
         text = f"""
-            Pluvianus: CaImAn Result Browser
-            A standalone GUI for browsing, editing, 
-            and manually verifying CaImAn results.
-
-            by Gergely Katona
-
-            Version: {__version__}
-            Date: {__date__}
+            <p><b>Pluvianus: CaImAn Result Browser</b><br>
+            A standalone GUI for browsing, editing,
+            and manually verifying CaImAn results.</p>
+            <p>by Gergely Katona</p>
+            <p>Version: {__version__}<br>
+            Date: {__date__}</p>
+            <p>If you use Pluvianus in your work, please cite our associated publication:</p>
+            <p><b>Pluvianus: Interactive GUI for Exploration and Quality Control of
+            CaImAn Calcium Imaging Analysis Results.</b> (2026)
+            Katona, G., Dávid, A., Slézia, A., &amp; Kaszás, A.
+            <i>Journal of Open Research Software</i>, 14.
+            <a href="https://doi.org/10.5334/jors.623">https://doi.org/10.5334/jors.623</a></p>
             """
         QMessageBox.about(self, "About Pluvianus", text)
     
