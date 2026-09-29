@@ -1,118 +1,165 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 
-import json
 import os
 import sys
-import tempfile
 
-import numpy as np
 import pynapple as nap
 import pyqtgraph as pg
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QFileDialog
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (
+    QApplication, QFileDialog, QHeaderView, QMessageBox, QPushButton,
+    QSplitter, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+)
 
-# Set pyqtgraph global configuration
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
 
-def save_state(mypath=None):
-    filename = 'pynapple_npz_viewer_state.json'
-    filename = os.path.join(tempfile.gettempdir(), filename)
-    state = {'path': mypath}
-    with open(filename, 'w') as f:
-        json.dump(state, f)
-
-def load_state():
-    filename = 'pynapple_npz_viewer_state.json'
-    filename = os.path.join(tempfile.gettempdir(), filename)
-    if not os.path.exists(filename):
-        return ""
-    with open(filename, 'r') as f:
-        state = json.load(f)
-        if state['path'] is not None and os.path.exists(state['path']):
-            mypath = state['path']
-            return mypath
-        else:
-            return ""
-
-app = QApplication(sys.argv)
-app.setApplicationName("Pynapple NPZ viewer")
-
-# Create a central widget with a vertical layout
-central_widget = QWidget()
-layout = QVBoxLayout(central_widget)
-
-# Create a PlotWidget to display curves
-win = pg.PlotWidget()
-layout.addWidget(win)
-
-# Add a legend to the plot widget
-legend = win.addLegend(offset=(10, 10))
-
-# Define a palette with 10 different colors
-colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
           '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 
-# --- Argument handling
-data_files = []
-# Ignore the 0-th arg (script name)
-if len(sys.argv) > 1:
-    # All arguments after script name are assumed to be filenames
-    # (Supports more than one file)
-    data_files = sys.argv[1:]
-    # Check if all files exist
-    for f in data_files:
-        if not os.path.exists(f):
-            sys.exit(f"File not found: {f}")
-else:
-    # No CLI file given: use file dialog
-    data_files, _ = QFileDialog.getOpenFileNames(
-        central_widget,
-        'Open Pynapple NPZ containing Tsd or TsdFrame',
-        load_state(),
-        'NPZ files (*.npz)'
-    )
-    if not data_files:
-        sys.exit("No files selected.")
 
-color_index = 0
-file_titles = []
-for data_file in data_files:
-    # Load the curve using pynapple
-    curve = nap.load_file(data_file)
-    file_titles.append(os.path.basename(data_file))
+class NpzViewer(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.settings = QSettings('pluvianus', 'pynapple_npz_viewer')
+        self.files = {}
+        self.color_index = 0
+        self.setWindowTitle('Pynapple NPZ viewer')
+        self.resize(1100, 700)
 
-    # If the file contains a Tsd (time-series data) object
-    if isinstance(curve, nap.Tsd):
-        name = os.path.basename(data_file)
-        win.plot(curve.times(), curve.data(),
-                 pen=pg.mkPen(color=colors[color_index % len(colors)]),
-                 name=name)
-        color_index += 1
-    # If the file contains a TsdFrame (a multi-column time-series) object
-    elif isinstance(curve, nap.TsdFrame):
-        for col in curve.columns:
-            name = os.path.basename(data_file) + '/' + str(col)
-            win.plot(curve.times(), curve.loc[col].data(),
-                     pen=pg.mkPen(color=colors[color_index % len(colors)]),
-                     name=name)
-            color_index += 1
+        layout = QVBoxLayout(self)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        layout.addWidget(self.splitter)
+        sidebar = QWidget()
+        sidebar_layout = QVBoxLayout(sidebar)
+        open_button = QPushButton('Open files…')
+        open_button.clicked.connect(self.open_files)
+        sidebar_layout.addWidget(open_button)
+        self.tree = QTreeWidget()
+        self.tree.setHeaderLabels(['Files / curves', ''])
+        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tree.itemChanged.connect(self.set_curve_visibility)
+        sidebar_layout.addWidget(self.tree)
+        self.splitter.addWidget(sidebar)
+
+        self.plot = pg.PlotWidget()
+        self.plot.addLegend(offset=(10, 10))
+        self.plot.setLabel('bottom', 'Time (s)')
+        self.splitter.addWidget(self.plot)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setSizes([300, 800])
+        geometry = self.settings.value('window/geometry')
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+        splitter_state = self.settings.value('window/splitter')
+        if splitter_state is not None:
+            self.splitter.restoreState(splitter_state)
+
+    def open_files(self):
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, 'Open Pynapple NPZ containing Tsd or TsdFrame',
+            self.settings.value('files/last_directory', '', type=str),
+            'NPZ files (*.npz)',
+        )
+        self.add_files(paths)
+
+    def add_files(self, paths):
+        errors = []
+        for path in paths:
+            path = os.path.realpath(os.path.abspath(path))
+            key = os.path.normcase(path)
+            if key in self.files:
+                self.tree.setCurrentItem(self.files[key][0])
+                continue
+            plots = []
+            try:
+                data = nap.load_file(path)
+                if isinstance(data, nap.Tsd):
+                    curves = [('Tsd', data.data())]
+                elif isinstance(data, nap.TsdFrame):
+                    curves = [(str(col), data.loc[col].data()) for col in data.columns]
+                else:
+                    raise ValueError(f'Unsupported format: {type(data).__name__}')
+                times = data.times()
+                filename = os.path.basename(path)
+                parent = QTreeWidgetItem([filename, ''])
+                parent.setToolTip(0, path)
+                parent.setFlags(parent.flags() | Qt.ItemFlag.ItemIsUserCheckable
+                                | Qt.ItemFlag.ItemIsAutoTristate)
+                parent.setCheckState(0, Qt.CheckState.Checked)
+                for label, values in curves:
+                    color = COLORS[self.color_index % len(COLORS)]
+                    name = filename if isinstance(data, nap.Tsd) else f'{filename}/{label}'
+                    plot = self.plot.plot(times, values, pen=pg.mkPen(color), name=name)
+                    plots.append(plot)
+                    self.color_index += 1
+                    child = QTreeWidgetItem(parent, [label, ''])
+                    child.setFlags(child.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                    child.setCheckState(0, Qt.CheckState.Checked)
+                    child.setForeground(0, QColor(color))
+                    child.setData(0, Qt.ItemDataRole.UserRole, plot)
+                self.tree.addTopLevelItem(parent)
+                close_button = QPushButton('Close')
+                close_button.setToolTip(f'Close {path}')
+                close_button.clicked.connect(lambda checked=False, key=key: self.close_file(key))
+                self.tree.setItemWidget(parent, 1, close_button)
+                parent.setExpanded(True)
+                self.files[key] = (parent, plots)
+                self.settings.setValue('files/last_directory', os.path.dirname(path))
+            except Exception as exc:
+                for plot in plots:
+                    self.plot.removeItem(plot)
+                errors.append(f'{path}\n{exc}')
+        self.update_title()
+        if errors:
+            QMessageBox.warning(self, 'Could not open files', '\n\n'.join(errors))
+
+    def set_curve_visibility(self, item, column):
+        plot = item.data(0, Qt.ItemDataRole.UserRole)
+        if column == 0 and plot is not None:
+            plot.setVisible(item.checkState(0) == Qt.CheckState.Checked)
+            # External visibility changes do not repaint pyqtgraph's legend samples.
+            for sample, _ in self.plot.plotItem.legend.items:
+                if sample.item is plot:
+                    sample.update()
+                    break
+
+    def close_file(self, key):
+        parent, plots = self.files.pop(key)
+        for plot in plots:
+            self.plot.removeItem(plot)
+        self.tree.takeTopLevelItem(self.tree.indexOfTopLevelItem(parent))
+        self.update_title()
+
+    def update_title(self):
+        titles = [item.text(0) for item, _ in self.files.values()]
+        title = 'Pynapple NPZ viewer'
+        if titles:
+            title += ' – ' + ', '.join(titles[:2])
+            if len(titles) > 2:
+                title += f' (+{len(titles) - 2} more)'
+        self.setWindowTitle(title)
+
+    def closeEvent(self, event):
+        self.settings.setValue('window/geometry', self.saveGeometry())
+        self.settings.setValue('window/splitter', self.splitter.saveState())
+        self.settings.sync()
+        super().closeEvent(event)
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setApplicationName('Pynapple NPZ viewer')
+    viewer = NpzViewer()
+    viewer.show()
+    if len(sys.argv) > 1:
+        viewer.add_files(sys.argv[1:])
     else:
-        raise Exception("Unsupported format: {}".format(type(curve)))
+        viewer.open_files()
+    return app.exec()
 
-# Save last used directory
-save_state(os.path.dirname(data_files[0]))
 
-win.setLabel('bottom', 'Time (s)')
-
-# Set window title to show opened file(s)
-if len(file_titles) == 1:
-    title = f"Pynapple NPZ viewer – {file_titles[0]}"
-else:
-    # Show all, or the first and count
-    title = f"Pynapple NPZ viewer – {', '.join(file_titles[:2])}"
-    if len(file_titles) > 2:
-        title += f" (+{len(file_titles)-2} more)"
-central_widget.setWindowTitle(title)
-
-central_widget.show()
-sys.exit(app.exec())
+if __name__ == '__main__':
+    sys.exit(main())
