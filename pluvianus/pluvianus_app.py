@@ -37,6 +37,7 @@ from scipy.signal.windows import gaussian
 
 from pluvianus.GripSplitter import GripSplitter
 from pluvianus.CaImAnFileChecker import CaImAnFileChecker
+from pluvianus.movie_export import Mp4Writer, SpatialMovieRenderer
 
 print(f'PySide6 {PySide6_version} loaded.')
 print(f'CaImAn { cm.__version__} loaded.')
@@ -241,6 +242,9 @@ class MainWindow(QMainWindow):
         exp_menu.addSeparator()
         self.save_mescroi_action = QAction('Contours to MEScROI (Good)...', self)
         exp_menu.addAction(self.save_mescroi_action)
+        exp_menu.addSeparator()
+        self.save_movie_action = QAction('Movie to MP4', self)
+        exp_menu.addAction(self.save_movie_action)
         
         help_menu = self.menuBar().addMenu('Help')
         about_action = QAction('About...', self)
@@ -267,6 +271,7 @@ class MainWindow(QMainWindow):
         self.save_trace_action_f_g_n.triggered.connect(lambda: self.save_trace('F_dff', 'Good', 'npz'))
         self.save_trace_action_f_a_n.triggered.connect(lambda: self.save_trace('F_dff', 'All', 'npz'))
         self.save_mescroi_action.triggered.connect(self.save_MEScROI)
+        self.save_movie_action.triggered.connect(self.save_movie)
         
         self.detr_action.triggered.connect(self.on_detrend_action)
         self.compute_component_evaluation_action.triggered.connect(self.on_compute_evaluate_components_action)
@@ -903,6 +908,7 @@ class MainWindow(QMainWindow):
         self.save_trace_action_f_a_n.setEnabled(self.cnm is not None and self.cnm.estimates.F_dff is not None)
         self.save_trace_action_f_g_n.setEnabled(self.cnm is not None and self.cnm.estimates.idx_components is not None and self.cnm.estimates.F_dff is not None)
         self.save_mescroi_action.setEnabled(self.cnm is not None and self.cnm.estimates.idx_components is not None)
+        self.save_movie_action.setEnabled(self.data_array is not None)
         self.shifts_action.setEnabled(self.cnm is not None and self.cnm.estimates.shifts is not None and len(self.cnm.estimates.shifts) > 0)
         self.temporal_widget.time_slider.setEnabled(self.cnm is not None)
         self.temporal_widget.time_spinbox.setEnabled(self.cnm is not None)
@@ -1089,6 +1095,78 @@ class MainWindow(QMainWindow):
         np.save(str(image_filep), image.T)
         print( ptype.capitalize() + ' image saved to: ' + image_filep )
         
+    def save_movie(self):
+        if self.data_array is None or self.cnm is None:
+            return
+        fps = float(self.framerate)  # Same rate used by the temporal slider.
+        if not np.isfinite(fps) or fps <= 0 or self.num_frames <= 0:
+            QMessageBox.critical(self, 'Error exporting movie', 'The movie must have frames and a positive finite frame rate.')
+            return
+
+        filename = os.path.abspath(os.path.splitext(self.hdf5_file)[0] + '.mp4')
+        if os.path.exists(filename):
+            answer = QMessageBox.question(
+                self, 'Overwrite movie?', f'{filename}\n\nReplace this file?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
+        progress = QProgressDialog('Preparing movie export...', 'Cancel', 0, self.num_frames, self)
+        progress.setWindowTitle('Exporting MP4 Movie')
+        progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setValue(0)
+        progress.show()
+        QApplication.processEvents()
+
+        writer = None
+        temporary_file = None
+        try:
+            spatial = self.spatial_widget
+            renderer = SpatialMovieRenderer(spatial)
+            window = self.frame_window
+            fd, temporary_file = tempfile.mkstemp(
+                prefix=os.path.splitext(os.path.basename(filename))[0] + '_',
+                suffix='.mp4', dir=os.path.dirname(filename),
+            )
+            os.close(fd)
+            for t in range(self.num_frames):
+                if progress.wasCanceled():
+                    return
+                tmin = max(0, t - window)
+                tmax = min(self.num_frames, t + window + 1)
+                image_data, _ = spatial.get_spatial_view_image(tmin, tmax)
+                frame = renderer.render(image_data)
+                if writer is None:
+                    writer = Mp4Writer(temporary_file, frame.shape[1], frame.shape[0], fps)
+                writer.write(frame)
+                progress.setLabelText(f'Exporting frame {t + 1} of {self.num_frames}...')
+                progress.setValue(t + 1)
+                QApplication.processEvents()
+            if progress.wasCanceled():
+                return
+            progress.setLabelText('Finalizing MP4 file...')
+            progress.setCancelButton(None)
+            QApplication.processEvents()
+            writer.finish()
+            writer = None
+            os.replace(temporary_file, filename)
+            temporary_file = None
+            print(f'Movie saved to: {filename}')
+        except Exception as error:
+            QMessageBox.critical(self, 'Error exporting movie', str(error))
+            print(f'Error exporting movie: {error}')
+        finally:
+            if writer is not None:
+                writer.abort()
+            if temporary_file is not None:
+                os.remove(temporary_file)
+            progress.close()
+
     def save_trace(self, trace, filtering, filetype):
         if self.cnm is None:
             return
@@ -2682,16 +2760,32 @@ class SpatialWidget(QWidget):
         self.spatial_zoom_auto_checkbox.setToolTip('Automatically centers view on selected component, with zoom corresponding to neuron diameter')
         left_layout.addWidget(self.spatial_zoom_auto_checkbox)
      
-        self.colorbar_reset_button = QPushButton('Reset Colorbar')
-        self.colorbar_reset_button.setToolTip('Reset colorbar to min and max of displayed data')
-        self.colorbar_reset_button.setEnabled(False)
-        left_layout.addWidget(self.colorbar_reset_button) # Colorbar reset button initialized
-        
         self.sync_axes_button = None
         if add_sync_checkbox:
             self.sync_axes_button = QPushButton("Sync Axes")
             self.sync_axes_button.setToolTip("Set this view's axes to match the left spatial view. One-time action.")
             left_layout.addWidget(self.sync_axes_button)
+
+        head_label = QLabel('Colorbar:')
+        head_label.setStyleSheet('font-weight: bold; margin-top: 10px;')
+        left_layout.addWidget(head_label)
+        self.colorbar_min_spinbox = QDoubleSpinBox()
+        self.colorbar_max_spinbox = QDoubleSpinBox()
+        for spinbox, label in ((self.colorbar_min_spinbox, 'Min'),
+                               (self.colorbar_max_spinbox, 'Max')):
+            spinbox.setDecimals(6)
+            spinbox.setRange(-1e12, 1e12)
+            spinbox.setPrefix(label + ': ')
+            spinbox.setFixedWidth(110)
+            spinbox.setKeyboardTracking(False)
+            spinbox.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
+            spinbox.setToolTip('Set the ' + label.lower() + 'imum colorbar level')
+            spinbox.setEnabled(False)
+            left_layout.addWidget(spinbox)
+        self.colorbar_reset_button = QPushButton('Reset')
+        self.colorbar_reset_button.setToolTip('Reset colorbar to min and max of displayed data')
+        self.colorbar_reset_button.setEnabled(False)
+        left_layout.addWidget(self.colorbar_reset_button)
 
         head_label=QLabel('Contours:')
         head_label.setStyleSheet('font-weight: bold;')
@@ -2722,6 +2816,8 @@ class SpatialWidget(QWidget):
         self.contour_combo.currentIndexChanged.connect(self.on_contour_combo_changed)
         self.spatial_avr_spinbox.valueChanged.connect(self.on_spatial_avr_spinbox_changed)
         self.spatial_view.sceneObj.sigMouseMoved.connect(self.on_mouseMoveEvent)
+        self.colorbar_min_spinbox.valueChanged.connect(lambda value: self.on_colorbar_level_changed(value, 'min'))
+        self.colorbar_max_spinbox.valueChanged.connect(lambda value: self.on_colorbar_level_changed(value, 'max'))
         self.colorbar_reset_button.clicked.connect(self.on_colorbar_reset_button_clicked)
         if add_sync_checkbox:
             self.sync_axes_button.clicked.connect(self.on_sync_axes_button_clicked)
@@ -2804,6 +2900,29 @@ class SpatialWidget(QWidget):
 
     def on_colorbar_reset_button_clicked(self):
         self.update_spatial_view_image(setLUT=True)
+
+    def on_colorbar_level_changed(self, value, bound):
+        if self.mainwindow.cnm is None or not hasattr(self, 'colorbar_item'):
+            return
+        low, high = self.colorbar_item.levels()
+        if bound == 'min':
+            low, high = value, max(value, high)
+        else:
+            low, high = min(low, value), value
+        self.colorbar_item.setLevels(values=(low, high))
+        self.update_colorbar_controls()
+
+    def update_colorbar_controls(self, *_):
+        if self.mainwindow.cnm is None:
+            return
+        low, high = self.colorbar_item.levels()
+        for spinbox, value in ((self.colorbar_min_spinbox, low),
+                               (self.colorbar_max_spinbox, high)):
+            spinbox.blockSignals(True)
+            spinbox.setValue(value)
+            spinbox.blockSignals(False)
+            spinbox.setEnabled(True)
+        self.colorbar_reset_button.setEnabled(True)
         
     def on_sync_axes_button_clicked(self):
         #One-time copy of view range from spatial_widget (view 1) to this widget (view 2).
@@ -2826,6 +2945,9 @@ class SpatialWidget(QWidget):
         self.channel_combo.setEnabled(self.mainwindow.cnm is not None)
         self.data_info_label.setEnabled(self.mainwindow.cnm is not None)
         self.spatial_avr_spinbox.setEnabled(self.mainwindow.cnm is not None)
+        self.colorbar_min_spinbox.setEnabled(False)
+        self.colorbar_max_spinbox.setEnabled(False)
+        self.colorbar_reset_button.setEnabled(False)
         
         if self.mainwindow.cnm is None:
             text='No data loaded yet'
@@ -2856,6 +2978,7 @@ class SpatialWidget(QWidget):
         self.spatial_image = pg.ImageItem()
         self.spatial_view.addItem( self.spatial_image )
         self.colorbar_item=self.spatial_view.getPlotItem().addColorBar( self.spatial_image, colorMap='viridis', rounding=1e-10) # , interactive=False)
+        self.colorbar_item.sigLevelsChanged.connect(self.update_colorbar_controls)
         
         plot_item = self.spatial_view.getPlotItem()
         plot_item.setAspectLocked(True)
@@ -3144,8 +3267,7 @@ class SpatialWidget(QWidget):
             min_val, max_val = np.min(image_data), np.max(image_data)
             self.colorbar_item.setLevels(values=[min_val, max_val])
 
-        # Colorbar reset button logic
-        self.colorbar_reset_button.setEnabled(True)  
+        self.update_colorbar_controls()
     
         return ctitle
     

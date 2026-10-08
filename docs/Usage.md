@@ -97,7 +97,7 @@ Scroll through time using the slider below the plot (shows both frame number and
 Shows the selected quantity and the component contours (green for good, red for bad).
 
 Pan: Left mouse button; Zoom: Mouse wheel (or scroll gesture on trackpad); Fit image: `A` button (lower left). Right-click on the plot to open a context menu allowing you to export the scene.<br>
-Adjust the colormap using the colorbar on the right; right-click to select alternate color schemes. Reset it with the `Reset Colorbar` button.
+Adjust the colormap using the colorbar on the right; right-click to select alternate color schemes. In the controls' `Colorbar` section, use the `Min` and `Max` spinboxes to set the displayed levels, or `Reset` to fit them to the displayed data.
 
 Under `Display` select the quantity to display (at the selected timepoint):
 * `A`: Spatial footprint of selected component
@@ -158,6 +158,7 @@ The `Export` menu lets you export various data:
 * C: Export component activity traces in `.npz` format, either for all components or only for good components.
 * ΔF/F: Export detrended ΔF/F traces in `.npz` format, either for all components or only for good components.
 * Contours: Export component contours in `.MEScROI` format, only for good components.
+* `Movie to MP4`: Available when a Data Array is open. Exports every frame using the first spatial widget's selected quantity, colormap, colorbar levels, temporal and spatial averaging, and visible contours. The movie retains the image's native pixel resolution and the frame rate used by the temporal slider. It is saved beside the opened `.hdf5`.
 
 See also the Save functionality in the File menu. <br>
 If you require additional export formats, please submit a pull request.

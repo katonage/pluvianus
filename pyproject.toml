@@ -21,7 +21,8 @@ classifiers = [
 dependencies = [
     "PySide6!=6.9.1",      # Avoid 6.9.1 due to known problems. 6.8.2.1, 6.9.0 and 6.9.2 work; 
     "pyqtgraph",             
-    "pynapple"            
+    "pynapple",
+    "imageio-ffmpeg>=0.5"  # Bundled FFmpeg for high-quality MP4 movie export
     # caiman expected in the caiman environment
 ]
 
