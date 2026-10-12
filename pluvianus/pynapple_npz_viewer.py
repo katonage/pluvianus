@@ -13,6 +13,11 @@ from PySide6.QtWidgets import (
     QSplitter, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
+try:
+    from pluvianus import __version__
+except ImportError:
+    __version__ = '0.0.0-dev'
+
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
 
@@ -51,6 +56,13 @@ class NpzViewer(QWidget):
         self.recent_button.setMenu(self.recent_menu)
         self.recent_button.setEnabled(bool(self.recent_files))
         open_layout.addWidget(self.recent_button)
+        about_button = QToolButton()
+        about_button.setText('?')
+        about_button.setFixedSize(24, 24)
+        about_button.setToolTip('About NPZ viewer')
+        about_button.setAccessibleName('About NPZ viewer')
+        about_button.clicked.connect(self.show_about)
+        open_layout.addWidget(about_button)
         sidebar_layout.addLayout(open_layout)
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(['Files / curves', 'Axis', ''])
@@ -98,6 +110,22 @@ class NpzViewer(QWidget):
         splitter_state = self.settings.value('window/splitter')
         if splitter_state is not None:
             self.splitter.restoreState(splitter_state)
+
+    def show_about(self):
+        text = f"""
+            <p><b>Pynapple NPZ viewer (npzview)</b><br>
+            A standalone viewer for Pynapple Tsd and TsdFrame files,
+            included with Pluvianus.</p>
+            <p>by Gergely Katona</p>
+            <p>Version: {__version__}</p>
+            <p>If you use Pluvianus in your work, please cite our associated publication:</p>
+            <p><b>Pluvianus: Interactive GUI for Exploration and Quality Control of
+            CaImAn Calcium Imaging Analysis Results.</b> (2026)
+            Katona, G., Dávid, A., Slézia, A., &amp; Kaszás, A.
+            <i>Journal of Open Research Software</i>, 14.
+            <a href="https://doi.org/10.5334/jors.623">https://doi.org/10.5334/jors.623</a></p>
+            """
+        QMessageBox.about(self, 'About NPZ viewer', text)
 
     def update_coordinates(self, position):
         if self.measurement_line is not None:
