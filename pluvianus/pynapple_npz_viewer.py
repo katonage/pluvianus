@@ -171,6 +171,9 @@ class NpzViewer(QWidget):
             self.settings.value('files/last_directory', '', type=str),
             'NPZ files (*.npz)',
         )
+        if paths:
+            self.settings.setValue('files/last_directory', os.path.dirname(os.path.abspath(paths[0])))
+            self.settings.sync()
         self.add_files(paths)
 
     def update_recent_menu(self):
@@ -182,6 +185,7 @@ class NpzViewer(QWidget):
             )
 
     def remember_file(self, path):
+        self.settings.setValue('files/last_directory', os.path.dirname(path))
         key = os.path.normcase(path)
         self.recent_files = [path] + [
             recent for recent in self.recent_files
@@ -190,6 +194,7 @@ class NpzViewer(QWidget):
         self.recent_files = self.recent_files[:20]
         self.settings.setValue('files/recent', self.recent_files)
         self.save_axis_preferences()
+        self.settings.sync()
         self.recent_button.setEnabled(True)
 
     def save_axis_preferences(self):
@@ -266,7 +271,6 @@ class NpzViewer(QWidget):
                 self.tree.setItemWidget(parent, 2, close_button)
                 parent.setExpanded(True)
                 self.files[key] = (parent, plots)
-                self.settings.setValue('files/last_directory', os.path.dirname(path))
                 self.remember_file(path)
             except Exception as exc:
                 for plot in plots:

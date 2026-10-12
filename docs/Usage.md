@@ -1,6 +1,6 @@
 # Usage
 
-## Launching the GUI
+## Launching the Pluvianus GUI
 To launch Pluvianus, type either of the following commands in your terminal:
 `python pluvianus` or simply `pluvianus`
 
@@ -13,6 +13,10 @@ You can also launch Pluvianus directly with the CaImAn `.hdf5` result file and `
    ```bash
    pluvianus -f results.hdf5 -d movement_corrected_data_array.mmap
    ```
+
+## NPZ viewer
+
+`npzview` is a standalone viewer for Pynapple `.npz` files containing `Tsd` or `TsdFrame` data, including traces exported by Pluvianus. Launch it with `npzview` or `npzview file1.npz file2.npz`, or use **Open files…** to load multiple files. You can show or hide individual curves, assign them to the left or right axis. Drag with the middle mouse button to measure time and amplitude differences.
 
 ## Opening Demo Files
 ### CNMF
