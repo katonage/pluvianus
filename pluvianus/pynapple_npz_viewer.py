@@ -1,5 +1,6 @@
 ﻿#!/usr/bin/env python3
 
+import math
 import os
 import sys
 
@@ -12,6 +13,8 @@ from PySide6.QtWidgets import (
     QMessageBox, QPushButton, QSizePolicy,
     QSplitter, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
+
+from pluvianus.GripSplitter import GripSplitter
 
 try:
     from pluvianus import __version__
@@ -36,6 +39,7 @@ class NpzViewer(QWidget):
         self.color_index = 0
         self.measurement_line = None
         self.measurement_start = None
+        self.measurement_plot = None
         self.setWindowTitle('Pynapple NPZ viewer')
         self.resize(1100, 700)
 
@@ -84,32 +88,85 @@ class NpzViewer(QWidget):
         sidebar_layout.addWidget(measurement_hint)
         self.splitter.addWidget(sidebar)
 
-        self.plot = pg.PlotWidget()
-        self.plot.addLegend(offset=(10, 10))
-        self.plot.setLabel('bottom', 'Time (s)')
-        self.plot.setLabel('left', 'Left axis')
-        self.plot.showAxis('right')
-        self.right_view = pg.ViewBox()
-        self.plot.scene().addItem(self.right_view)
-        self.plot.getAxis('right').linkToView(self.right_view)
-        self.right_view.setXLink(self.plot.getViewBox())
-        self.plot.setLabel('right', 'Right axis', color='#00008b')
-        self.plot.getAxis('right').setPen(pg.mkPen('#00008b'))
-        self.plot.getAxis('right').setTextPen(pg.mkPen('#00008b'))
-        # Tick labels can move the plot without changing its size.
-        self.plot.getViewBox().geometryChanged.connect(self.update_views)
+        self.plot_splitter = GripSplitter(Qt.Orientation.Vertical)
+        self.plot_splitter.setChildrenCollapsible(False)
+        self.plot, self.right_view = self.create_plot()
+        self.bottom_plot, self.bottom_right_view = self.create_plot()
+        self.plot_views = {
+            self.plot: self.right_view,
+            self.bottom_plot: self.bottom_right_view,
+        }
+        self.axis_targets = {
+            'Top left': (self.plot, self.plot.getViewBox()),
+            'Top right': (self.plot, self.right_view),
+            'Bottom left': (self.bottom_plot, self.bottom_plot.getViewBox()),
+            'Bottom right': (self.bottom_plot, self.bottom_right_view),
+        }
+        self.bottom_plot.setXLink(self.plot)
+        for plot in self.plot_views:
+            self.plot_splitter.addWidget(plot)
+            # Tick labels can move the plot without changing its size.
+            plot.getViewBox().geometryChanged.connect(self.update_views)
+            plot.scene().sigMouseMoved.connect(
+                lambda position, plot=plot: self.update_coordinates(position, plot)
+            )
+            plot.viewport().installEventFilter(self)
         self.update_views()
-        self.plot.scene().sigMouseMoved.connect(self.update_coordinates)
-        self.plot.viewport().installEventFilter(self)
-        self.splitter.addWidget(self.plot)
+        self.plot_splitter.setSizes([350, 350])
+        self.splitter.addWidget(self.plot_splitter)
         self.splitter.setStretchFactor(1, 1)
         self.splitter.setSizes([300, 800])
+        self.time_scale_bar = pg.ScaleBar(
+            size=1, width=6, brush='k', pen='k', suffix='s', offset=(-20, 35),
+        )
+        self.time_scale_bar.setParentItem(self.plot.getViewBox())
+        self.time_scale_bar.setZValue(100)
+        self.time_scale_bar.text.setColor('k')
+        self.plot.getViewBox().sigXRangeChanged.connect(self.update_time_scale_bar)
+        self.update_time_scale_bar()
         geometry = self.settings.value('window/geometry')
         if geometry is not None:
             self.restoreGeometry(geometry)
         splitter_state = self.settings.value('window/splitter')
         if splitter_state is not None:
             self.splitter.restoreState(splitter_state)
+        plot_splitter_state = self.settings.value('window/plot_splitter')
+        if plot_splitter_state is not None:
+            self.plot_splitter.restoreState(plot_splitter_state)
+
+    @staticmethod
+    def create_plot():
+        plot = pg.PlotWidget()
+        plot.addLegend(offset=(10, 10))
+        plot.setLabel('bottom', 'Time (s)')
+        plot.setLabel('left', 'Left axis')
+        plot.showAxis('right')
+        right_view = pg.ViewBox()
+        plot.scene().addItem(right_view)
+        plot.getAxis('right').linkToView(right_view)
+        right_view.setXLink(plot.getViewBox())
+        plot.setLabel('right', 'Right axis', color='#00008b')
+        plot.getAxis('right').setPen(pg.mkPen('#00008b'))
+        plot.getAxis('right').setTextPen(pg.mkPen('#00008b'))
+        # Matching gutters keep linked time coordinates aligned on screen.
+        for side in ('left', 'right'):
+            plot.getAxis(side).setWidth(80)
+        return plot, right_view
+
+    def update_time_scale_bar(self, *args):
+        lower, upper = self.plot.getViewBox().viewRange()[0]
+        target = (upper - lower) / 5
+        if not math.isfinite(target) or target <= 0:
+            return
+        magnitude = 10 ** math.floor(math.log10(target))
+        size = max(step * magnitude for step in (1, 2, 5) if step * magnitude <= target)
+        self.time_scale_bar.size = size
+        if size >= 1:
+            label = f'{size:g}s'
+        else:
+            label = pg.siFormat(size, suffix='s', space='')
+        self.time_scale_bar.text.setText(label)
+        self.time_scale_bar.updateBar()
 
     def show_about(self):
         text = f"""
@@ -127,42 +184,46 @@ class NpzViewer(QWidget):
             """
         QMessageBox.about(self, 'About NPZ viewer', text)
 
-    def update_coordinates(self, position):
+    def update_coordinates(self, position, plot=None):
         if self.measurement_line is not None:
             return
-        left_view = self.plot.getViewBox()
+        plot = self.plot if plot is None else plot
+        left_view = plot.getViewBox()
         if not left_view.sceneBoundingRect().contains(position):
             self.clear_coordinates()
             return
         left = left_view.mapSceneToView(position)
-        right = self.right_view.mapSceneToView(position)
+        right = self.plot_views[plot].mapSceneToView(position)
+        panel = 'Top' if plot is self.plot else 'Bottom'
         self.coordinate_status.setText(
-            f'x: {left.x():.6f} s\ny1 (left): {left.y():.6g}\ny2 (right): {right.y():.6g}'
+            f'{panel} plot\nx: {left.x():.6f} s\ny1 (left): {left.y():.6g}\ny2 (right): {right.y():.6g}'
         )
 
     def clear_coordinates(self):
         self.coordinate_status.setText('x: — s\ny1 (left): —\ny2 (right): —')
 
     def eventFilter(self, watched, event):
-        if watched is self.plot.viewport():
+        plot = next((plot for plot in self.plot_views if watched is plot.viewport()), None)
+        if plot is not None:
             event_type = event.type()
             if event_type == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.MiddleButton:
-                position = self.plot.mapToScene(event.position().toPoint())
-                if self.plot.getViewBox().sceneBoundingRect().contains(position):
+                position = plot.mapToScene(event.position().toPoint())
+                if plot.getViewBox().sceneBoundingRect().contains(position):
+                    self.measurement_plot = plot
                     self.measurement_start = position
                     self.measurement_line = QGraphicsLineItem()
                     self.measurement_line.setPen(pg.mkPen('#d32f2f', width=2, style=Qt.PenStyle.DashLine))
                     self.measurement_line.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
                     self.measurement_line.setZValue(1000)
-                    self.plot.scene().addItem(self.measurement_line)
+                    plot.scene().addItem(self.measurement_line)
                     self.update_measurement(position)
                     return True
-            elif self.measurement_line is not None:
+            elif self.measurement_line is not None and self.measurement_plot is plot:
                 if event_type == QEvent.Type.MouseMove:
-                    self.update_measurement(self.plot.mapToScene(event.position().toPoint()))
+                    self.update_measurement(plot.mapToScene(event.position().toPoint()))
                     return True
                 if event_type == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.MiddleButton:
-                    self.update_measurement(self.plot.mapToScene(event.position().toPoint()))
+                    self.update_measurement(plot.mapToScene(event.position().toPoint()))
                     self.finish_measurement()
                     return True
                 if event_type == QEvent.Type.Wheel:
@@ -172,7 +233,7 @@ class NpzViewer(QWidget):
         return super().eventFilter(watched, event)
 
     def update_measurement(self, position):
-        left_view = self.plot.getViewBox()
+        left_view = self.measurement_plot.getViewBox()
         bounds = left_view.sceneBoundingRect()
         end = QPointF(
             max(bounds.left(), min(position.x(), bounds.right())),
@@ -180,18 +241,21 @@ class NpzViewer(QWidget):
         )
         self.measurement_line.setLine(QLineF(self.measurement_start, end))
         left_delta = left_view.mapSceneToView(end) - left_view.mapSceneToView(self.measurement_start)
-        right_delta = self.right_view.mapSceneToView(end) - self.right_view.mapSceneToView(self.measurement_start)
+        right_view = self.plot_views[self.measurement_plot]
+        right_delta = right_view.mapSceneToView(end) - right_view.mapSceneToView(self.measurement_start)
+        panel = 'Top' if self.measurement_plot is self.plot else 'Bottom'
         self.coordinate_status.setText(
-            f'Δx: {abs(left_delta.x()):.6f} s\n'
+            f'{panel} plot\nΔx: {abs(left_delta.x()):.6f} s\n'
             f'Δy1 (left): {abs(left_delta.y()):.6g}\n'
             f'Δy2 (right): {abs(right_delta.y()):.6g}'
         )
 
     def finish_measurement(self):
         if self.measurement_line is not None:
-            self.plot.scene().removeItem(self.measurement_line)
+            self.measurement_plot.scene().removeItem(self.measurement_line)
             self.measurement_line = None
             self.measurement_start = None
+            self.measurement_plot = None
 
     def open_files(self):
         paths, _ = QFileDialog.getOpenFileNames(
@@ -267,7 +331,7 @@ class NpzViewer(QWidget):
                     name = filename if isinstance(data, nap.Tsd) else f'{filename}/{label}'
                     plot = self.plot.plot(times, values, pen=pg.mkPen(color), name=name)
                     plots.append(plot)
-                    self.curve_axes[plot] = 'Left'
+                    self.curve_axes[plot] = 'Top left'
                     self.color_index += 1
                     child = QTreeWidgetItem(parent, [label, ''])
                     child.setFlags(child.flags() | Qt.ItemFlag.ItemIsUserCheckable)
@@ -275,13 +339,16 @@ class NpzViewer(QWidget):
                     child.setForeground(0, QColor(color))
                     child.setData(0, Qt.ItemDataRole.UserRole, plot)
                 self.tree.addTopLevelItem(parent)
+                # Establish the shared time range before curves leave the top left view.
+                self.plot.getViewBox().updateAutoRange()
                 for index, plot in enumerate(plots):
                     axis_selector = QComboBox()
-                    axis_selector.addItems(['Left', 'Right'])
-                    axis_selector.setToolTip('Choose the vertical axis for this curve')
-                    axis = self.axis_preferences.get(key, {}).get(parent.child(index).text(0), 'Left')
-                    if axis not in ('Left', 'Right'):
-                        axis = 'Left'
+                    axis_selector.addItems(list(self.axis_targets))
+                    axis_selector.setToolTip('Choose the plot and vertical axis for this curve')
+                    axis = self.axis_preferences.get(key, {}).get(parent.child(index).text(0), 'Top left')
+                    axis = {'Left': 'Top left', 'Right': 'Top right'}.get(axis, axis)
+                    if axis not in self.axis_targets:
+                        axis = 'Top left'
                     self.set_curve_axis(plot, axis, persist=False)
                     axis_selector.setCurrentText(axis)
                     axis_selector.currentTextChanged.connect(
@@ -309,20 +376,22 @@ class NpzViewer(QWidget):
             QMessageBox.warning(self, 'Could not open files', '\n\n'.join(errors))
 
     def update_views(self):
-        left_view = self.plot.getViewBox()
-        self.right_view.setGeometry(left_view.sceneBoundingRect())
-        self.right_view.linkedViewChanged(left_view, self.right_view.XAxis)
+        for plot, right_view in self.plot_views.items():
+            left_view = plot.getViewBox()
+            right_view.setGeometry(left_view.sceneBoundingRect())
+            right_view.linkedViewChanged(left_view, right_view.XAxis)
 
     def set_curve_axis(self, plot, axis, persist=True):
         if self.curve_axes[plot] == axis:
             return
         visible = plot.isVisible()
         self.remove_curve(plot)
-        if axis == 'Right':
-            self.right_view.addItem(plot)
-            self.plot.plotItem.legend.addItem(plot, plot.name())
+        target_plot, target_view = self.axis_targets[axis]
+        if target_view is target_plot.getViewBox():
+            target_plot.addItem(plot)
         else:
-            self.plot.addItem(plot)
+            target_view.addItem(plot)
+            target_plot.plotItem.legend.addItem(plot, plot.name())
         self.curve_axes[plot] = axis
         plot.setVisible(visible)
         self.update_views()
@@ -330,18 +399,21 @@ class NpzViewer(QWidget):
             self.save_axis_preferences()
 
     def remove_curve(self, plot):
-        if self.curve_axes.pop(plot, 'Left') == 'Right':
-            self.right_view.removeItem(plot)
-            self.plot.plotItem.legend.removeItem(plot)
+        axis = self.curve_axes.pop(plot, 'Top left')
+        target_plot, target_view = self.axis_targets[axis]
+        if target_view is target_plot.getViewBox():
+            target_plot.removeItem(plot)
         else:
-            self.plot.removeItem(plot)
+            target_view.removeItem(plot)
+            target_plot.plotItem.legend.removeItem(plot)
 
     def set_curve_visibility(self, item, column):
         plot = item.data(0, Qt.ItemDataRole.UserRole)
         if column == 0 and plot is not None:
             plot.setVisible(item.checkState(0) == Qt.CheckState.Checked)
             # External visibility changes do not repaint pyqtgraph's legend samples.
-            for sample, _ in self.plot.plotItem.legend.items:
+            target_plot, _ = self.axis_targets[self.curve_axes[plot]]
+            for sample, _ in target_plot.plotItem.legend.items:
                 if sample.item is plot:
                     sample.update()
                     break
@@ -366,6 +438,7 @@ class NpzViewer(QWidget):
         self.finish_measurement()
         self.settings.setValue('window/geometry', self.saveGeometry())
         self.settings.setValue('window/splitter', self.splitter.saveState())
+        self.settings.setValue('window/plot_splitter', self.plot_splitter.saveState())
         self.settings.sync()
         super().closeEvent(event)
 

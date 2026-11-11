@@ -16,7 +16,11 @@ You can also launch Pluvianus directly with the CaImAn `.hdf5` result file and `
 
 ## NPZ viewer
 
-`npzview` is a standalone viewer for Pynapple `.npz` files containing `Tsd` or `TsdFrame` data, including traces exported by Pluvianus. Launch it with `npzview` or `npzview file1.npz file2.npz`, or use **Open files…** to load multiple files. You can show or hide individual curves, assign them to the left or right axis. Drag with the middle mouse button to measure time and amplitude differences.
+`npzview` is a standalone viewer for Pynapple `.npz` files containing `Tsd` or `TsdFrame` data, including traces exported by Pluvianus. Launch it with `npzview` or `npzview file1.npz file2.npz`, or use **Open files…** to load multiple files.
+
+Two stacked plots share a synchronized time axis; drag the horizontal grip between them to adjust their heights. You can show or hide individual curves and choose **Top left**, **Top right**, **Bottom left**, or **Bottom right** in the curve list. Curve destinations and the splitter position are remembered.
+
+The black time scale bar at the upper right of the top plot updates as you zoom (for example, `1s` or `500ms`). Drag with the middle mouse button in either plot to measure time and amplitude differences on its left and right axes.
 
 ## Opening Demo Files
 ### CNMF
