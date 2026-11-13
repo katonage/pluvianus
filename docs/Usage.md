@@ -16,9 +16,19 @@ You can also launch Pluvianus directly with the CaImAn `.hdf5` result file and `
 
 ## NPZ viewer
 
-`npzview` is a standalone viewer for Pynapple `.npz` files containing `Tsd` or `TsdFrame` data, including traces exported by Pluvianus. Launch it with `npzview` or `npzview file1.npz file2.npz`, or use **Open files…** to load multiple files.
+`npzview` is a standalone viewer for Pynapple `.npz` files containing `Tsd` or `TsdFrame` data, including traces exported by Pluvianus. Launch it with `npzview` or `npzview file1.npz file2.npz`, or use **File → Open files…** (`Ctrl+O`) to load multiple files. Previously opened files are available under **File → Open recent**, and version information is under **Help → About NPZ viewer…**.
 
 Two stacked plots share a synchronized time axis; drag the horizontal grip between them to adjust their heights. You can show or hide individual curves and choose **Top left**, **Top right**, **Bottom left**, or **Bottom right** in the curve list. Curve destinations and the splitter position are remembered.
+
+Two-level curves also offer **Intervals** in their axis selector. This replaces the curve with faint shading over high-state epochs in **both panels**, using each curve's own color. Multiple interval curves can overlap. The shading follows zooming without changing the vertical ranges, and the curve checkbox shows or hides it in both panels. Choose a regular axis to return to a curve. The larger of the two levels is high; constant zero/one signals are supported. States hold until the next sample or recording-interval end, and missing samples and `time_support` gaps remain unshaded. Session files preserve this choice, its color, visibility, and the remembered regular axis.
+
+Use **File → Save settings…** (`Ctrl+S`), **Save settings as…** (`Ctrl+Shift+S`), and **Load settings…** (`Ctrl+Shift+O`) to save and restore a complete display session. The `.npzview.json` file references the open NPZ files and preserves their order, curve/spectrogram modes, visibility, axis destinations, colors, zoom/autoscale settings, and splitter proportions. References are relative where possible, so settings and data can be moved together. Loading replaces the current display; missing files can be located or skipped. See the [settings format](NPZViewerSettings.md) for details.
+
+For precomputed spectrograms, save an ordinary Pynapple `TsdFrame` with window-center timestamps in seconds, data shaped `(time, frequency)`, numeric column names giving frequency centers in Hz, and a `time_support` interval for each continuous recording segment. No extra metadata is needed. With at least two evenly spaced frequencies and at least two regularly spaced timestamps in each nonempty interval, a **Curves / Spectrogram** selector appears beside the filename. Frequencies can be supplied in any order; logarithmic or irregular frequency grids remain available as curves. Sampling steps may differ between intervals.
+
+Spectrogram mode shows one list item that can be hidden or assigned to any of the four axes. Each recording interval is drawn separately, leaving gaps blank; curves also break at interval boundaries. The selected vertical axis shows frequency in Hz. Switch back to **Curves** to see the individual frequency traces. The time zoom and each representation's axis destinations are preserved while switching.
+
+The **…** button beside the spectrogram opens its color controls. All pieces share one colormap and color range, initially **hot** with the **1st–99th percentiles** of finite values across the entire file. Choose another colormap, edit the minimum and maximum, or reset the defaults. Color changes apply to every piece together and survive switching between image and curve modes during the session.
 
 The black time scale bar at the upper right of the top plot updates as you zoom (for example, `1s` or `500ms`). Drag with the middle mouse button in either plot to measure time and amplitude differences on its left and right axes.
 
