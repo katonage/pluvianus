@@ -115,6 +115,20 @@ class NpzSessionFormatTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             session.validate_session(self.document)
 
+    def test_spectrogram_db_scale_and_contrast_profiles_are_validated(self):
+        image = self.document['files'][0]['spectrogram']
+        image.update(scale='db', levels=[-110., -20.],
+                     levels_by_scale={'linear': [1e-11, 1e-2], 'db': [-110., -20.]})
+        session.write_session(self.path, self.document)
+        self.assertEqual(session.read_session(self.path), self.document)
+        image['scale'] = 'unknown'
+        with self.assertRaises(ValueError):
+            session.validate_session(self.document)
+        image['scale'] = 'db'
+        image['levels_by_scale']['db'] = [1., -1.]
+        with self.assertRaises(ValueError):
+            session.validate_session(self.document)
+
 
 if __name__ == '__main__':
     unittest.main()

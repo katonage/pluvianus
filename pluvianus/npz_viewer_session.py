@@ -81,6 +81,12 @@ def validate_session(document):
                      and bool(image.get('colormap', 'hot')), f'{name}: invalid colormap.')
             if image.get('levels') is not None:
                 _range(image['levels'], name + ' color limits')
+            _require(image.get('scale', 'linear') in ('linear', 'db'), f'{name}: unknown spectrogram scale.')
+            scale_levels = image.get('levels_by_scale', {})
+            _require(isinstance(scale_levels, dict), f'{name}: levels_by_scale must be an object.')
+            for scale, limits in scale_levels.items():
+                _require(scale in ('linear', 'db'), f'{name}: unknown contrast scale.')
+                _range(limits, name + ' ' + scale + ' color limits')
     view = document.get('view', {})
     _require(isinstance(view, dict), 'View settings must be an object.')
     for key in ('legends_visible', 'scale_bar_visible'):

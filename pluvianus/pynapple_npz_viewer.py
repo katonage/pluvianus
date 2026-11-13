@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from pluvianus.GripSplitter import GripSplitter
+from pluvianus.npz_data import column_info, load_viewer_data
 from pluvianus.npz_intervals import IntervalShading, high_state_epochs
 from pluvianus.npz_spectrogram import (
     SPECTROGRAM_COLORMAPS, SpectrogramColorsDialog, SpectrogramItem, spectrogram_geometry,
@@ -105,11 +106,13 @@ class NpzViewer(QWidget):
         self.session_path = None
         self._restoring_session = False
         self.curve_axes = {}
+        self.curve_metadata = {}
         self.interval_states = {}
         self.color_index = 0
         self.measurement_line = None
         self.measurement_start = None
         self.measurement_plot = None
+        self.status_plot = None
         self.setWindowTitle('Pynapple NPZ viewer')
         self.resize(1100, 700)
 
@@ -228,7 +231,8 @@ class NpzViewer(QWidget):
     def create_plot():
         plot = pg.PlotWidget()
         plot.addLegend(offset=(10, 10), sampleType=CurveLegendSample)
-        plot.setLabel('bottom', 'Time (s)')
+        plot.setLabel('bottom', 'Time', units='s')
+        plot.getAxis('bottom').enableAutoSIPrefix(False)
         plot.setLabel('left', 'Left axis')
         plot.showAxis('right')
         right_view = pg.ViewBox()
@@ -317,14 +321,16 @@ class NpzViewer(QWidget):
         plot = self.plot if plot is None else plot
         left_view = plot.getViewBox()
         if not left_view.sceneBoundingRect().contains(position):
-            self.clear_coordinates()
+            self.clear_coordinates(plot)
             return
+        self.status_plot = plot
         left = left_view.mapSceneToView(position)
         right = self.plot_views[plot].mapSceneToView(position)
         panel = 'Top' if plot is self.plot else 'Bottom'
-        status = (
-            f'{panel} plot\nx: {left.x():.6f} s\ny1 (left): {left.y():.6g}\ny2 (right): {right.y():.6g}'
-        )
+        left_unit, right_unit = (plot.getAxis(side).labelUnits for side in ('left', 'right'))
+        status = (f'{panel} plot\nx: {left.x():.6f} s\n'
+                  f'y1 (left): {left.y():.6g}' + (f' {left_unit}' if left_unit else '') + '\n'
+                  f'y2 (right): {right.y():.6g}' + (f' {right_unit}' if right_unit else ''))
         for parent, items in self.files.values():
             for item in items:
                 if not isinstance(item, SpectrogramItem) or not item.isVisible():
@@ -334,10 +340,18 @@ class NpzViewer(QWidget):
                     point = target_view.mapSceneToView(position)
                     value = item.value_at(point.x(), point.y())
                     status += f'\n{parent.text(0)} value: ' + (f'{value:.6g}' if value is not None else 'no data')
+                    if value is not None:
+                        status += f' {item.data_unit}' if item.data_unit else ''
+                        if item.data_scale == 'db':
+                            status += (f' ({10 * math.log10(value):.5g} {item.display_unit})'
+                                       if value > 0 else ' (dB: no data)')
         self.coordinate_status.setText(status)
 
-    def clear_coordinates(self):
-        self.coordinate_status.setText('x: — s\ny1 (left): —\ny2 (right): —')
+    def clear_coordinates(self, plot=None):
+        self.status_plot = plot or self.status_plot or self.plot
+        left_unit, right_unit = (self.status_plot.getAxis(side).labelUnits for side in ('left', 'right'))
+        self.coordinate_status.setText('x: — s\ny1 (left): —' + (f' {left_unit}' if left_unit else '')
+                                       + '\ny2 (right): —' + (f' {right_unit}' if right_unit else ''))
 
     def eventFilter(self, watched, event):
         plot = next((plot for plot in self.plot_views if watched is plot.viewport()), None)
@@ -386,10 +400,18 @@ class NpzViewer(QWidget):
         right_view = self.plot_views[self.measurement_plot]
         right_delta = right_view.mapSceneToView(end) - right_view.mapSceneToView(self.measurement_start)
         panel = 'Top' if self.measurement_plot is self.plot else 'Bottom'
+        self.status_plot = self.measurement_plot
+        left_unit, right_unit = (self.measurement_plot.getAxis(side).labelUnits for side in ('left', 'right'))
+        delta_t = abs(left_delta.x())
+        time_text = f'{delta_t:.6g} s'
+        if delta_t > 0:
+            frequency = 1. / delta_t
+            if math.isfinite(frequency) and frequency > 1 and not math.isclose(frequency, 1., rel_tol=1e-12):
+                time_text += f' ({frequency:.6g} Hz)'
         self.coordinate_status.setText(
-            f'{panel} plot\nΔx: {abs(left_delta.x()):.6f} s\n'
-            f'Δy1 (left): {abs(left_delta.y()):.6g}\n'
-            f'Δy2 (right): {abs(right_delta.y()):.6g}'
+            f'{panel} plot\nΔx: {time_text}\n'
+            f'Δy1 (left): {abs(left_delta.y()):.6g}' + (f' {left_unit}' if left_unit else '') + '\n'
+            f'Δy2 (right): {abs(right_delta.y()):.6g}' + (f' {right_unit}' if right_unit else '')
         )
 
     def finish_measurement(self):
@@ -412,9 +434,7 @@ class NpzViewer(QWidget):
 
     @staticmethod
     def column_labels(data):
-        if isinstance(data, nap.Tsd):
-            return [None]
-        return [label.item() if isinstance(label, np.generic) else label for label in data.columns]
+        return [info.name for info in column_info(data)]
 
     def session_document(self, path):
         """Capture both display representations without constructing hidden images."""
@@ -444,6 +464,9 @@ class NpzViewer(QWidget):
                     entry['spectrogram'] = {
                         'axis': axis.lower().replace(' ', '_'), 'visible': image.isVisible(),
                         'colormap': image.color_name, 'levels': list(map(float, image.levels)),
+                        'scale': image.data_scale,
+                        'levels_by_scale': {scale: list(map(float, limits))
+                                            for scale, limits in image.levels_by_scale.items()},
                     }
                 elif state.image_settings is not None:
                     entry['spectrogram'] = dict(state.image_settings)
@@ -532,14 +555,7 @@ class NpzViewer(QWidget):
             try:
                 if key in staged:
                     raise ValueError('Duplicate file reference; using its first occurrence.')
-                data = nap.load_file(reference)
-                if not isinstance(data, (nap.Tsd, nap.TsdFrame)):
-                    raise ValueError(f'Unsupported format: {type(data).__name__}')
-                if isinstance(data, nap.TsdFrame) and data.shape[1] == 0:
-                    raise ValueError('The frame has no data columns.')
-                if (not (np.issubdtype(data.values.dtype, np.number)
-                         or np.issubdtype(data.values.dtype, np.bool_)) or np.iscomplexobj(data.values)):
-                    raise ValueError('Display data must be real numeric values.')
+                data = load_viewer_data(reference)
                 geometry = spectrogram_geometry(data)
                 if geometry is None and ('spectrogram' in entry or entry.get('mode') == 'spectrogram'):
                     issues.append(f'{reference}\nThe frequency/time grid is no longer suitable for a spectrogram; using curves.')
@@ -715,16 +731,11 @@ class NpzViewer(QWidget):
             plots = []
             parent = None
             try:
-                data = nap.load_file(path) if data_by_path is None else data_by_path[key]
-                if isinstance(data, nap.Tsd):
-                    curves = [('Tsd', data.values)]
-                elif isinstance(data, nap.TsdFrame):
-                    if data.shape[1] == 0:
-                        raise ValueError('The frame has no data columns.')
-                    curves = [(str(col), data.values[:, index])
-                              for index, col in enumerate(data.columns)]
-                else:
-                    raise ValueError(f'Unsupported format: {type(data).__name__}')
+                data = load_viewer_data(path) if data_by_path is None else data_by_path[key]
+                infos = column_info(data)
+                curves = [('Tsd' if info.name is None else str(info.name),
+                           data.values if isinstance(data, nap.Tsd) else data.values[:, index])
+                          for index, info in enumerate(infos)]
                 times = data.times()
                 geometry = spectrogram_geometry(data)
                 interval_ids = np.searchsorted(data.time_support.end, times)
@@ -736,7 +747,7 @@ class NpzViewer(QWidget):
                 parent.setFlags(parent.flags() | Qt.ItemFlag.ItemIsUserCheckable
                                 | Qt.ItemFlag.ItemIsAutoTristate)
                 parent.setCheckState(0, Qt.CheckState.Checked)
-                for label, values in curves:
+                for index, (label, values) in enumerate(curves):
                     color = COLORS[self.color_index % len(COLORS)]
                     name = filename if isinstance(data, nap.Tsd) else f'{filename}/{label}'
                     connect = connections.copy()
@@ -745,6 +756,7 @@ class NpzViewer(QWidget):
                                           connect=connect)
                     plots.append(plot)
                     self.curve_axes[plot] = 'Top left'
+                    self.curve_metadata[plot] = infos[index]
                     plot.visibleChanged.connect(self.sync_legends)
                     epochs = high_state_epochs(times, np.asarray(values), data.time_support)
                     if epochs is not None:
@@ -789,6 +801,7 @@ class NpzViewer(QWidget):
                 for plot in plots:
                     self.remove_curve(plot)
                     self.interval_states.pop(plot, None)
+                    self.curve_metadata.pop(plot, None)
                 self.spectrograms.pop(key, None)
                 self.file_data.pop(key, None)
                 self.files.pop(key, None)
@@ -799,6 +812,7 @@ class NpzViewer(QWidget):
                 errors.append(f'{path}\n{exc}')
         self.update_title()
         self.sync_legends()
+        self.update_axis_labels()
         if errors and report_errors:
             QMessageBox.warning(self, 'Could not open files', '\n\n'.join(errors))
         return errors
@@ -869,6 +883,9 @@ class NpzViewer(QWidget):
             state.image = SpectrogramItem(state.data, state.geometry)
             if state.image_settings is not None:
                 image = state.image_settings
+                state.image.levels_by_scale.update({scale: tuple(limits) for scale, limits
+                                                   in image.get('levels_by_scale', {}).items()})
+                state.image.set_scale(image.get('scale', 'linear'))
                 state.image.set_colors(image.get('colormap', 'hot'),
                                        image.get('levels') or state.image.default_levels)
                 state.image.setVisible(image.get('visible', True))
@@ -884,7 +901,7 @@ class NpzViewer(QWidget):
             if mode == 'Spectrogram':
                 entries = [('Spectrogram', state.image)]
             else:
-                entries = list(zip(map(str, state.data.columns), state.curves))
+                entries = list(zip(map(str, self.column_labels(state.data)), state.curves))
             active = []
             for label, plot in entries:
                 if self.is_interval_curve(plot):
@@ -918,11 +935,25 @@ class NpzViewer(QWidget):
     def update_axis_labels(self):
         for axis, (plot, _) in self.axis_targets.items():
             side = 'left' if axis.endswith('left') else 'right'
-            image = any(isinstance(item, SpectrogramItem) and destination == axis
-                        for item, destination in self.curve_axes.items())
-            plot.setLabel(side, 'Frequency' if image else f'{side.title()} axis',
-                          units='Hz' if image else '',
+            descriptors = []
+            for item, destination in self.curve_axes.items():
+                if destination != axis or self.is_interval_curve(item):
+                    continue
+                if isinstance(item, SpectrogramItem):
+                    descriptors.append(('Frequency', 'Hz'))
+                elif item in self.curve_metadata:
+                    info = self.curve_metadata[item]
+                    descriptors.append((info.data_label, info.data_unit))
+            units = {unit for _, unit in descriptors if unit}
+            labels = {label for label, _ in descriptors if label}
+            compatible = len(units) <= 1
+            unit = next(iter(units)) if len(units) == 1 else ''
+            label = next(iter(labels)) if compatible and len(labels) == 1 else f'{side.title()} axis'
+            plot.setLabel(side, label, units=unit if compatible else '',
                           **({'color': '#00008b'} if side == 'right' else {}))
+            plot.getAxis(side).enableAutoSIPrefix(not bool(units))
+        if self.measurement_line is None:
+            self.clear_coordinates()
 
     def update_views(self):
         for plot, right_view in self.plot_views.items():
@@ -998,6 +1029,7 @@ class NpzViewer(QWidget):
             self.remove_curve(plot)
         for plot in curves:
             self.interval_states.pop(plot, None)
+            self.curve_metadata.pop(plot, None)
         self.spectrograms.pop(key, None)
         self.file_data.pop(key, None)
         self.tree.takeTopLevelItem(self.tree.indexOfTopLevelItem(parent))

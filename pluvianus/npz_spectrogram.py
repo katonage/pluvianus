@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGraphicsRectItem, QLabel,
     QPushButton, QVBoxLayout,
 )
+from pluvianus.npz_data import column_info, common_metadata, frequency_coordinates
 
 SPECTROGRAM_COLORMAPS = ('hot', 'CET-L1', 'viridis', 'inferno', 'plasma', 'magma', 'cividis', 'turbo')
 COLOR_LIMIT_REGEX = re.compile(
@@ -61,26 +62,34 @@ def regular_step(coordinates):
 
 
 def spectrogram_geometry(data):
-    """Return (column order, image rectangles) when a frame has a linear grid.
+    """Return image pieces at explicit frequency_hz coordinates and real times.
 
-    Columns are frequency centers in Hz. Time centers must be regularly spaced
-    within each nonempty time_support interval; intervals may have different
-    steps. Rectangles retain pixel centers and are clipped to time support.
+    Regular frequency grids use one image per recording interval. Nonuniform
+    grids use one image row per frequency bin, with midpoint bin boundaries.
+    Time centers must be regular within each nonempty time_support interval.
     """
     if not isinstance(data, nap.TsdFrame) or data.shape[1] < 2:
         return None
     values = data.values
     if not np.issubdtype(values.dtype, np.number) or np.iscomplexobj(values):
         return None
-    try:
-        frequencies = np.asarray(data.columns, dtype=float)
-    except (TypeError, ValueError):
+    frequencies = frequency_coordinates(data)
+    if frequencies is None:
         return None
     order = np.argsort(frequencies)
     frequencies = frequencies[order]
-    frequency_step = regular_step(frequencies)
-    if frequency_step is None or frequencies[0] < 0:
+    if not np.all(np.diff(frequencies) > 0):
         return None
+    frequency_step = regular_step(frequencies)
+    if frequency_step is not None:
+        bands = [(slice(None), frequencies[0] - frequency_step / 2,
+                  frequencies[-1] + frequency_step / 2)]
+    else:
+        edges = np.r_[frequencies[0] - (frequencies[1] - frequencies[0]) / 2,
+                      frequencies[:-1] + np.diff(frequencies) / 2,
+                      frequencies[-1] + (frequencies[-1] - frequencies[-2]) / 2]
+        bands = [(slice(index, index + 1), edges[index], edges[index + 1])
+                 for index in range(len(frequencies))]
     times = data.times()
     if not np.isfinite(times).all() or not np.all(np.diff(times) > 0):
         return None
@@ -96,13 +105,11 @@ def spectrogram_geometry(data):
         step = regular_step(times[first:last])
         if step is None:
             return None
-        rect = QRectF(
-            times[first] - step / 2, frequencies[0] - frequency_step / 2,
-            step * (last - first), frequency_step * len(frequencies),
-        )
-        clip = QRectF(max(start, rect.left()), rect.top(),
-                      min(end, rect.right()) - max(start, rect.left()), rect.height())
-        rectangles.append((slice(first, last), rect, clip))
+        for columns, lower, upper in bands:
+            rect = QRectF(times[first] - step / 2, lower, step * (last - first), upper - lower)
+            clip = QRectF(max(start, rect.left()), rect.top(),
+                          min(end, rect.right()) - max(start, rect.left()), rect.height())
+            rectangles.append((slice(first, last), columns, rect, clip))
         count += last - first
     if not rectangles or count != len(times):
         return None
@@ -120,32 +127,67 @@ class SpectrogramItem(pg.GraphicsObject):
     def __init__(self, data, geometry):
         super().__init__()
         self.images = []
+        self.linear_images = []
+        self.data_scale = 'linear'
+        self.levels_by_scale = {}
+        infos = column_info(data)
+        self.data_unit = common_metadata(infos, 'data_unit') or ''
+        self.data_label = common_metadata(infos, 'data_label') or 'Value'
+        self.source_data_unit = common_metadata(infos, 'source_data_unit')
         self._bounds = QRectF()
         self.setZValue(-10)
         self.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         order, rectangles = geometry
-        for rows, rect, clip in rectangles:
+        for rows, columns, rect, clip in rectangles:
             # Clip edge pixels without rescaling their centers away from t/f.
             clipping_item = QGraphicsRectItem(clip, self)
             clipping_item.setPen(pg.mkPen(None))
             clipping_item.setBrush(pg.mkBrush(None))
             clipping_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             clipping_item.setFlag(clipping_item.GraphicsItemFlag.ItemClipsChildrenToShape)
-            values = np.array(data.values[rows][:, order].T,
+            values = np.array(data.values[rows][:, order[columns]].T,
                               dtype=np.result_type(data.values.dtype, np.float32), order='C')
             values[~np.isfinite(values)] = np.nan
             image = pg.ImageItem(values, axisOrder='row-major', autoLevels=False)
             image.setRect(rect)
             image.setParentItem(clipping_item)
             self.images.append(image)
+            self.linear_images.append(values)
             self._bounds = self._bounds.united(clip)
-        finite = data.values[np.isfinite(data.values)]
-        self.default_levels = tuple(np.percentile(finite, [1, 99])) if finite.size else (0., 1.)
-        low, high = self.default_levels
+        self.default_levels = self.default_contrast('linear')
+        self.set_colors('hot', self.default_levels)
+
+    @property
+    def display_unit(self):
+        return ('dB re 1 ' + self.data_unit).strip() if self.data_scale == 'db' else self.data_unit
+
+    def default_contrast(self, scale):
+        finite = [values[np.isfinite(values) & (values > 0 if scale == 'db' else True)]
+                  for values in self.linear_images]
+        values = np.concatenate(finite)
+        if scale == 'db':
+            values = 10 * np.log10(values)
+        low, high = map(float, np.percentile(values, [1, 99])) if values.size else (0., 1.)
         if low == high:
             padding = max(abs(low) * 1e-6, 1e-12)
-            self.default_levels = (low - padding, high + padding)
-        self.set_colors('hot', self.default_levels)
+            low, high = low - padding, high + padding
+        return low, high
+
+    def set_scale(self, scale):
+        if scale not in ('linear', 'db'):
+            raise ValueError(f'Unknown spectrogram scale: {scale}')
+        if scale == self.data_scale:
+            return
+        for image, values in zip(self.images, self.linear_images):
+            display = values
+            if scale == 'db':
+                display = np.full_like(values, np.nan)
+                positive = np.isfinite(values) & (values > 0)
+                display[positive] = 10 * np.log10(values[positive])
+            image.setImage(display, autoLevels=False)
+        self.data_scale = scale
+        self.default_levels = self.default_contrast(scale)
+        self.set_colors(self.color_name, self.levels_by_scale.get(scale, self.default_levels))
 
     def boundingRect(self):
         return QRectF(self._bounds)
@@ -161,20 +203,21 @@ class SpectrogramItem(pg.GraphicsObject):
     def value_at(self, time, frequency):
         """Return the raw pixel value, or None outside valid, finite data."""
         point = QPointF(time, frequency)
-        for image in self.images:
+        for image, values in zip(self.images, self.linear_images):
             clip = image.parentItem().rect()
             if not (clip.left() <= time < clip.right() and clip.top() <= frequency < clip.bottom()):
                 continue
             pixel = image.mapFromItem(self, point)
             column, row = math.floor(pixel.x()), math.floor(pixel.y())
             if 0 <= row < image.image.shape[0] and 0 <= column < image.image.shape[1]:
-                value = float(image.image[row, column])
+                value = float(values[row, column])
                 return value if math.isfinite(value) else None
         return None
 
     def set_colors(self, name, levels):
         self.color_name = name
         self.levels = tuple(levels)
+        self.levels_by_scale[self.data_scale] = self.levels
         color_map = hot_colormap() if name == 'hot' else pg.colormap.get(name)
         for image in self.images:
             image.setColorMap(color_map)
@@ -190,6 +233,14 @@ class SpectrogramColorsDialog(QDialog):
         layout = QVBoxLayout(self)
         form = QFormLayout()
         layout.addLayout(form)
+        self.value_label = QLabel()
+        self.value_label.setWordWrap(True)
+        layout.insertWidget(0, self.value_label)
+        self.scale = QComboBox()
+        self.scale.addItem('Linear PSD', 'linear')
+        self.scale.addItem('dB', 'db')
+        self.scale.setCurrentIndex(self.scale.findData(spectrogram.data_scale))
+        form.addRow('Display', self.scale)
         self.colormap = QComboBox()
         self.colormap.addItems(SPECTROGRAM_COLORMAPS)
         self.colormap.setCurrentText(spectrogram.color_name)
@@ -214,6 +265,21 @@ class SpectrogramColorsDialog(QDialog):
         self.high.sigValueChanging.connect(self.apply_colors)
         self.low.lineEdit().textChanged.connect(self.apply_colors)
         self.high.lineEdit().textChanged.connect(self.apply_colors)
+        self.scale.currentIndexChanged.connect(self.change_scale)
+        self.update_value_label()
+
+    def update_value_label(self):
+        unit = self.spectrogram.display_unit
+        self.value_label.setText(self.spectrogram.data_label + (f' ({unit})' if unit else ''))
+
+    def change_scale(self):
+        self._resetting = True
+        self.spectrogram.set_scale(self.scale.currentData())
+        self.low.setValue(self.spectrogram.levels[0])
+        self.high.setValue(self.spectrogram.levels[1])
+        self.update_value_label()
+        self._resetting = False
+        self.apply_colors()
 
     def create_limit_spinbox(self, value):
         spin = ColorLimitSpinBox(value, lambda: color_limit_step(*self.spectrogram.levels))

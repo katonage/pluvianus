@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QStyle, QStyle
 
 from pluvianus.GripSplitter import GripSplitterHandle
 from pluvianus.npz_intervals import high_state_epochs
+from pluvianus.npz_data import column_info, load_viewer_data
 from pluvianus.pynapple_npz_viewer import NpzViewer
 from pluvianus.npz_spectrogram import (
     SpectrogramColorsDialog, SpectrogramItem, spectrogram_geometry,
@@ -159,6 +160,63 @@ class NpzViewerTests(unittest.TestCase):
             deltas = [float(line.split(': ')[1].split()[0]) for line in lines[1:]]
             np.testing.assert_allclose(deltas, [5, 5 * (index + 1), 50 * (index + 1)], rtol=0.03)
 
+    def test_status_readouts_and_measurements_keep_the_active_panels_units(self):
+        _, _, left_parent, _ = self.load_voltage('status_mv.npz', unit='mV')
+        _, _, right_parent, _ = self.load_voltage('status_v.npz', unit='V')
+        viewer = self.viewer
+        for name, (panel, right_view) in zip(('Top', 'Bottom'), viewer.plot_views.items()):
+            viewer.tree.itemWidget(left_parent.child(0), 1).setCurrentText(name + ' left')
+            viewer.tree.itemWidget(right_parent.child(0), 1).setCurrentText(name + ' right')
+            panel.setXRange(0., 2., padding=0)
+            panel.setYRange(0., 10., padding=0)
+            right_view.setYRange(0., 100., padding=0)
+            self.app.processEvents()
+            view = panel.getViewBox()
+            viewer.update_coordinates(view.mapViewToScene(QPointF(.5, 5.)), panel)
+            self.assertIn('y1 (left): 5 mV', viewer.coordinate_status.text())
+            right_text = viewer.coordinate_status.text().splitlines()[3]
+            self.assertTrue(right_text.endswith(' V'))
+            self.assertAlmostEqual(float(right_text.split(': ')[1].split()[0]), 50., delta=.25)
+            viewer.clear_coordinates()
+            self.assertIn('y1 (left): — mV', viewer.coordinate_status.text())
+            self.assertIn('y2 (right): — V', viewer.coordinate_status.text())
+            start = panel.mapFromScene(view.mapViewToScene(QPointF(.2, 2.)))
+            end = panel.mapFromScene(view.mapViewToScene(QPointF(.7, 7.)))
+            QTest.mousePress(panel.viewport(), Qt.MouseButton.MiddleButton, pos=start)
+            QTest.mouseMove(panel.viewport(), end)
+            QTest.mouseRelease(panel.viewport(), Qt.MouseButton.MiddleButton, pos=end)
+            lines = viewer.coordinate_status.text().splitlines()
+            self.assertIn('Hz)', lines[1])
+            frequency = float(lines[1].partition('(')[2].split()[0])
+            self.assertAlmostEqual(frequency, 2., delta=.04)
+            self.assertTrue(lines[2].endswith(' mV'))
+            self.assertTrue(lines[3].endswith(' V'))
+
+    def test_delta_time_shows_reciprocal_hz_only_above_one_without_zero_division(self):
+        viewer = self.viewer
+        for panel in viewer.plot_views:
+            panel.setXRange(0., 4., padding=0)
+            panel.setYRange(-1., 1., padding=0)
+            self.app.processEvents()
+            view = panel.getViewBox()
+            start = panel.mapFromScene(view.mapViewToScene(QPointF(1., 0.)))
+            QTest.mousePress(panel.viewport(), Qt.MouseButton.MiddleButton, pos=start)
+            origin = view.mapSceneToView(viewer.measurement_start)
+            for delta in (0., .25, -.25, .5, 1., 2., 1e-7):
+                with self.subTest(panel=panel, delta=delta):
+                    end = view.mapViewToScene(QPointF(origin.x() + delta, origin.y()))
+                    viewer.update_measurement(end)
+                    text = viewer.coordinate_status.text().splitlines()[1]
+                    measured = float(text.split(': ')[1].split()[0])
+                    self.assertAlmostEqual(measured, abs(delta), delta=max(abs(delta) * 1e-5, 1e-15))
+                    if 0 < abs(delta) < 1:
+                        self.assertIn('Hz)', text)
+                        frequency = float(text.partition('(')[2].split()[0])
+                        self.assertAlmostEqual(frequency, 1 / abs(delta), delta=1 / abs(delta) * 1e-5)
+                    else:
+                        self.assertNotIn('Hz', text)
+            QTest.mouseRelease(panel.viewport(), Qt.MouseButton.MiddleButton, pos=start)
+
     def test_legacy_preferences_and_bottom_destination_survive_reopen(self):
         viewer = self.viewer
         viewer.axis_preferences[self.key] = {'a': 'Right', 'b': 'Left'}
@@ -185,13 +243,17 @@ class NpzViewerTests(unittest.TestCase):
             self.assertLessEqual(lower, 0)
             self.assertGreaterEqual(upper, 10)
 
-    def load_spectrogram(self, times=None, values=None, columns=None, support=None):
+    def load_spectrogram(self, times=None, values=None, columns=None, support=None, frequencies=None):
         times = np.array([.5, 1.5, 2.5, 6.5, 7.5]) if times is None else times
         values = np.arange(len(times) * 3, dtype=float).reshape(-1, 3) if values is None else values
         columns = [1., 2., 3.] if columns is None else columns
         support = nap.IntervalSet(start=[0., 6.], end=[3., 8.]) if support is None else support
         path = str(Path(self.directory.name) / 'spectrum.npz')
-        data = nap.TsdFrame(t=times, d=values, columns=columns, time_support=support)
+        metadata = {'frequency_hz': columns if frequencies is None else frequencies,
+                    'data_unit': ['mV^2/Hz'] * len(columns),
+                    'data_label': ['Power spectral density'] * len(columns),
+                    'source_data_unit': ['mV'] * len(columns)}
+        data = nap.TsdFrame(t=times, d=values, columns=columns, time_support=support, metadata=metadata)
         data.save(path)
         with patch.object(QMessageBox, 'warning') as warning:
             self.viewer.add_files([path])
@@ -311,7 +373,7 @@ class NpzViewerTests(unittest.TestCase):
         for image in layer.images:
             np.testing.assert_allclose(image.getLevels(), expected)
 
-    def test_image_eligibility_requires_linear_frequencies_and_regular_intervals(self):
+    def test_image_eligibility_requires_explicit_frequency_metadata_and_regular_times(self):
         for columns, times in [(['a', 'b', 'c'], [0., 1., 2.]),
                                ([1., 2., 4.], [0., 1., 2.]),
                                ([1., 1., 2.], [0., 1., 2.]),
@@ -319,6 +381,13 @@ class NpzViewerTests(unittest.TestCase):
             with self.subTest(columns=columns, times=times):
                 frame = nap.TsdFrame(t=times, d=np.ones((3, 3)), columns=columns)
                 self.assertIsNone(spectrogram_geometry(frame))
+        for frequencies in ([1., 1., 2.], [1., np.nan, 3.], [-1., 1., 3.]):
+            frame = nap.TsdFrame(t=[0., 1., 2.], d=np.ones((3, 3)), columns=['a', 'b', 'c'],
+                                 metadata={'frequency_hz': frequencies})
+            self.assertIsNone(spectrogram_geometry(frame))
+        frame = nap.TsdFrame(t=[0., 1., 2.5], d=np.ones((3, 3)),
+                             metadata={'frequency_hz': [1., 2., 3.]})
+        self.assertIsNone(spectrogram_geometry(frame))
         parent, _ = self.load_curves()
         self.assertIsNone(self.viewer.tree.itemWidget(parent, 1))
 
@@ -340,7 +409,8 @@ class NpzViewerTests(unittest.TestCase):
     def test_constant_and_missing_spectrograms_have_finite_color_limits(self):
         for value in [0., 1e-20, np.nan]:
             with self.subTest(value=value):
-                data = nap.TsdFrame(t=[0., 1.], d=np.full((2, 2), value), columns=[1., 2.])
+                data = nap.TsdFrame(t=[0., 1.], d=np.full((2, 2), value), columns=[1., 2.],
+                                    metadata={'frequency_hz': [1., 2.]})
                 layer = SpectrogramItem(data, spectrogram_geometry(data))
                 self.assertTrue(np.isfinite(layer.levels).all())
                 self.assertLess(*layer.levels)
@@ -558,6 +628,7 @@ class NpzViewerTests(unittest.TestCase):
         self.assertEqual(self.viewer.files[key][1][0].color_name, 'hot')
         data = self.viewer.file_data[key]
         nap.TsdFrame(t=data.times(), d=data.values, columns=[1., 2., 4.],
+                     metadata={'frequency_hz': [1., 1., 4.]},
                      time_support=data.time_support).save(str(Path(self.directory.name) / 'spectrum.npz'))
         with patch.object(QMessageBox, 'warning') as warning:
             self.assertTrue(self.viewer.load_session(path))
@@ -571,6 +642,8 @@ class NpzViewerTests(unittest.TestCase):
         support = nap.IntervalSet(start=[0., 8.], end=[6., 12.])
         data = nap.TsdFrame(t=times, d=values, columns=['a', 'b'] if columns is None else columns,
                             time_support=support)
+        if columns is not None:
+            data.set_info(frequency_hz=columns)
         path = str(Path(self.directory.name) / 'annotations.npz')
         data.save(path)
         self.viewer.add_files([path])
@@ -1025,6 +1098,191 @@ class NpzViewerTests(unittest.TestCase):
         dialog.high.setValue(1e-7)
         click_arrow(dialog.low, True)
         self.assertAlmostEqual(dialog.low.value(), 1e-9, delta=1e-22)
+
+    def load_voltage(self, filename='voltage.npz', unit='mV', label='Voltage', source_unit=None):
+        metadata = {'data_unit': [unit], 'data_label': [label]}
+        if source_unit is not None:
+            metadata['source_data_unit'] = [source_unit]
+        data = nap.TsdFrame(t=np.arange(5) * 100., d=np.arange(5, dtype=float)[:, None],
+                            time_units='ms', columns=['AUXi_2'], metadata=metadata)
+        path = str(Path(self.directory.name) / filename)
+        data.save(path)
+        self.viewer.add_files([path])
+        key = os.path.normcase(os.path.realpath(path))
+        return key, data, self.viewer.files[key][0], self.viewer.files[key][1][0]
+
+    def test_one_column_frames_and_legacy_tsd_share_native_loading_and_controls(self):
+        with patch('pluvianus.npz_data.nap.load_file', wraps=nap.load_file) as loader:
+            key, data, parent, curve = self.load_voltage(source_unit='V')
+            self.assertEqual(loader.call_count, 1)
+            self.assertEqual(parent.childCount(), 1)
+            self.assertEqual(parent.child(0).text(0), 'AUXi_2')
+            self.assertTrue(curve.isVisible())
+            self.assertIsNone(self.viewer.tree.itemWidget(parent, 1))
+            self.assertIsNotNone(self.viewer.tree.itemWidget(parent.child(0), 2))
+            np.testing.assert_allclose(curve.getData()[0], np.arange(5) * .1)
+            np.testing.assert_array_equal(curve.getData()[1], data.values[:, 0])
+            axis = self.viewer.plot.getAxis('left')
+            self.assertEqual((axis.labelText, axis.labelUnits), ('Voltage', 'mV'))
+            self.assertFalse(axis.autoSIPrefix)
+            self.assertEqual(self.viewer.curve_metadata[curve].source_data_unit, 'V')
+            self.assertEqual(self.viewer.plot.getAxis('bottom').labelUnits, 's')
+            path = Path(self.directory.name) / 'voltage.npzview.json'
+            self.assertTrue(self.viewer.save_session(path))
+            self.assertTrue(self.viewer.load_session(path))
+            self.assertEqual(loader.call_count, 2)
+            self.assertEqual(self.viewer.plot.getAxis('left').labelUnits, 'mV')
+        legacy = str(Path(self.directory.name) / 'legacy.npz')
+        nap.Tsd(t=np.arange(5), d=np.arange(5, dtype=float)).save(legacy)
+        self.viewer.add_files([legacy])
+        parent, plots = self.viewer.files[os.path.normcase(os.path.realpath(legacy))]
+        self.assertEqual(parent.childCount(), 1)
+        self.assertEqual(plots[0].getData()[1].shape, (5,))
+        self.assertIsNotNone(self.viewer.tree.itemWidget(parent.child(0), 1))
+        self.assertIsNotNone(self.viewer.tree.itemWidget(parent.child(0), 2))
+
+    def test_axis_labels_follow_metadata_and_suppress_conflicting_units(self):
+        first, _, first_parent, _ = self.load_voltage('one.npz')
+        self.load_voltage('two.npz')
+        key, _, parent, _ = self.load_voltage('volts.npz', unit='V')
+        axis = self.viewer.plot.getAxis('left')
+        self.assertEqual((axis.labelText, axis.labelUnits), ('Left axis', ''))
+        parent.child(0).setCheckState(0, Qt.CheckState.Unchecked)
+        self.assertEqual(axis.labelUnits, '')  # Assigned units still conflict when hidden.
+        self.viewer.tree.itemWidget(parent.child(0), 1).setCurrentText('Bottom right')
+        self.assertEqual((axis.labelText, axis.labelUnits), ('Voltage', 'mV'))
+        bottom = self.viewer.bottom_plot.getAxis('right')
+        self.assertEqual((bottom.labelText, bottom.labelUnits), ('Voltage', 'V'))
+        self.viewer.tree.itemWidget(first_parent.child(0), 1).setCurrentText('Top right')
+        self.assertEqual(self.viewer.plot.getAxis('right').labelUnits, 'mV')
+        self.load_voltage('different_label.npz', label='LFP')
+        self.assertEqual((axis.labelText, axis.labelUnits), ('Left axis', 'mV'))
+        self.viewer.close_file(key)
+        self.assertEqual((bottom.labelText, bottom.labelUnits), ('Right axis', ''))
+        self.viewer.close_file(first)
+        self.assertEqual(self.viewer.plot.getAxis('right').labelUnits, '')
+
+    def test_native_string_and_byte_column_encodings_keep_column_metadata(self):
+        encodings = ['U16', 'S16']
+        if hasattr(np, 'dtypes') and hasattr(np.dtypes, 'StringDType'):
+            encodings.append(np.dtypes.StringDType())
+        for index, encoding in enumerate(encodings):
+            with self.subTest(encoding=encoding):
+                path = Path(self.directory.name) / f'encoded{index}.npz'
+                data = nap.TsdFrame(t=[0., 1., 2.], d=np.arange(3.)[:, None],
+                                    columns=np.asarray(['AUXi_2'], dtype=encoding),
+                                    metadata={'data_unit': np.asarray(['mV'], dtype=encoding),
+                                              'data_label': np.asarray(['Voltage'], dtype=encoding)})
+                data.save(str(path))
+                self.viewer.add_files([str(path)])
+                key = os.path.normcase(os.path.realpath(path))
+                parent, curves = self.viewer.files[key]
+                self.assertEqual(parent.child(0).text(0), 'AUXi_2')
+                self.assertEqual(column_info(self.viewer.file_data[key])[0].data_unit, 'mV')
+                self.assertEqual(self.viewer.curve_metadata[curves[0]].data_label, 'Voltage')
+                self.viewer.close_file(key)
+
+    def test_native_npz_metadata_dictionary_encoding_is_read_by_pynapple(self):
+        path = Path(self.directory.name) / 'native_metadata.npz'
+        columns = np.asarray(['AUXi_2'], dtype=np.dtypes.StringDType()
+                             if hasattr(np, 'dtypes') and hasattr(np.dtypes, 'StringDType') else str)
+        np.savez(path, t=np.array([0., .1, .2]), d=np.arange(3.)[:, None], columns=columns,
+                 start=np.array([0.]), end=np.array([.2]), type=np.array(['TsdFrame']),
+                 _metadata={'data_unit': {'AUXi_2': 'mV'},
+                            'data_label': {'AUXi_2': 'Voltage'},
+                            'source_data_unit': {'AUXi_2': 'mV'}})
+        data = load_viewer_data(path)
+        self.assertEqual(column_info(data)[0].name, 'AUXi_2')
+        self.assertEqual(column_info(data)[0].data_unit, 'mV')
+        self.viewer.add_files([str(path)])
+        self.assertEqual(self.viewer.plot.getAxis('left').labelText, 'Voltage')
+        self.assertEqual(self.viewer.plot.getAxis('left').labelUnits, 'mV')
+
+    def test_frequency_metadata_is_authoritative_and_nonuniform_bins_use_actual_coordinates(self):
+        path = Path(self.directory.name) / 'numeric_channels.npz'
+        nap.TsdFrame(t=np.arange(4.), d=np.arange(12.).reshape(4, 3), columns=[1., 2., 3.],
+                     metadata={'data_unit': ['mV'] * 3, 'data_label': ['Voltage'] * 3}).save(str(path))
+        self.viewer.add_files([str(path)])
+        key = os.path.normcase(os.path.realpath(path))
+        self.assertNotIn(key, self.viewer.spectrograms)
+        self.assertIsNone(self.viewer.tree.itemWidget(self.viewer.files[key][0], 1))
+        self.viewer.close_file(key)
+        key, data, parent = self.load_spectrogram(columns=['low', 'mid', 'high'], frequencies=[1., 3., 10.])
+        self.viewer.tree.itemWidget(parent, 1).setCurrentText('Spectrogram')
+        image = self.viewer.files[key][1][0]
+        self.assertEqual(len(image.images), 6)
+        for frequency, column in [(1., 0), (3., 1), (10., 2)]:
+            self.assertEqual(image.value_at(1.5, frequency), data.values[1, column])
+        self.assertIsNone(image.value_at(4.5, 3.))
+        self.assertEqual([(item.parentItem().rect().top(), item.parentItem().rect().bottom())
+                          for item in image.images[:3]], [(0., 2.), (2., 6.5), (6.5, 13.5)])
+        self.assertEqual(self.viewer.plot.getAxis('left').labelUnits, 'Hz')
+        self.assertEqual(self.viewer.plot.getAxis('left').labelText, 'Frequency')
+        dialog = SpectrogramColorsDialog(image, self.viewer)
+        self.addCleanup(dialog.close)
+        self.assertIn('Power spectral density', dialog.value_label.text())
+        self.assertIn('mV^2/Hz', dialog.value_label.text())
+
+    def test_db_display_preserves_linear_psd_and_restores_both_contrast_ranges(self):
+        values = np.array([[1e-10, 1e-7, 0.], [1e-9, np.nan, -1.], [1., 10., 100.],
+                           [1e-8, 1e-12, 1e-3], [1e-4, 1e-6, 1e-2]])
+        key, data, parent = self.load_spectrogram(values=values)
+        source = Path(self.directory.name) / 'spectrum.npz'
+        original_file = source.read_bytes()
+        self.viewer.tree.itemWidget(parent, 1).setCurrentText('Spectrogram')
+        layer = self.viewer.files[key][1][0]
+        layer.set_colors('hot', (2e-10, 1e-5))
+        dialog = SpectrogramColorsDialog(layer, self.viewer)
+        self.addCleanup(dialog.close)
+        dialog.scale.setCurrentIndex(dialog.scale.findData('db'))
+        self.assertEqual(layer.data_scale, 'db')
+        self.assertEqual(layer.display_unit, 'dB re 1 mV^2/Hz')
+        self.assertEqual(layer.color_name, 'hot')
+        positives = values[np.isfinite(values) & (values > 0)]
+        np.testing.assert_allclose(layer.levels, np.percentile(10 * np.log10(positives), [1, 99]))
+        for image, raw in zip(layer.images, layer.linear_images):
+            expected = np.full_like(raw, np.nan)
+            positive = np.isfinite(raw) & (raw > 0)
+            expected[positive] = 10 * np.log10(raw[positive])
+            np.testing.assert_allclose(image.image, expected)
+        self.assertEqual(layer.value_at(.5, 1.), 1e-10)
+        self.assertEqual(layer.value_at(.5, 3.), 0.)
+        dialog.low.setValue(-110.)
+        dialog.high.setValue(-20.)
+        dialog.scale.setCurrentIndex(dialog.scale.findData('linear'))
+        self.assertEqual(layer.levels, (2e-10, 1e-5))
+        dialog.scale.setCurrentIndex(dialog.scale.findData('db'))
+        self.assertEqual(layer.levels, (-110., -20.))
+        np.testing.assert_array_equal(self.viewer.file_data[key].values, values)
+        self.assertEqual(source.read_bytes(), original_file)
+        self.viewer.plot.setXRange(0., 8., padding=0)
+        self.viewer.plot.setYRange(.5, 3.5, padding=0)
+        self.app.processEvents()
+        self.viewer.update_coordinates(self.viewer.plot.getViewBox().mapViewToScene(QPointF(.5, 1.)))
+        self.assertIn('1e-10 mV^2/Hz (-100 dB re 1 mV^2/Hz)', self.viewer.coordinate_status.text())
+        path = Path(self.directory.name) / 'db.npzview.json'
+        self.assertTrue(self.viewer.save_session(path))
+        restored = self.make_viewer()
+        self.assertTrue(restored.load_session(path))
+        loaded = restored.files[key][1][0]
+        self.assertEqual(loaded.data_scale, 'db')
+        self.assertEqual(loaded.levels, (-110., -20.))
+        loaded.set_scale('linear')
+        self.assertEqual(loaded.levels, (2e-10, 1e-5))
+        np.testing.assert_array_equal(restored.file_data[key].values, values)
+        restored.tree.itemWidget(restored.files[key][0], 1).setCurrentText('Curves')
+        self.assertEqual(restored.plot.getAxis('left').labelText, 'Power spectral density')
+        self.assertEqual(restored.plot.getAxis('left').labelUnits, 'mV^2/Hz')
+        np.testing.assert_array_equal(restored.files[key][1][0].getData()[1], values[:, 0])
+
+    def test_db_of_nonpositive_psd_is_missing_without_changing_stored_zero_values(self):
+        key, _, parent = self.load_spectrogram(values=np.zeros((5, 3)))
+        self.viewer.tree.itemWidget(parent, 1).setCurrentText('Spectrogram')
+        image = self.viewer.files[key][1][0]
+        image.set_scale('db')
+        self.assertTrue(all(np.isnan(piece.image).all() for piece in image.images))
+        self.assertTrue(np.isfinite(image.levels).all())
+        self.assertTrue((self.viewer.file_data[key].values == 0).all())
 
 
 if __name__ == '__main__':

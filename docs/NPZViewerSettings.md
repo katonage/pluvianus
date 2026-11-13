@@ -26,6 +26,7 @@ A minimal example:
         "axis": "top_left",
         "visible": true,
         "colormap": "hot",
+        "scale": "linear",
         "levels": [0.12, 8.4]
       }
     }
@@ -91,6 +92,16 @@ the actual color limits, preserving the saved appearance; resetting colors in
 the viewer recalculates the default percentiles. Both representations' settings
 are saved, including an inactive spectrogram's previously chosen colors and the
 individual frequency curves. Hidden image pieces are reconstructed lazily.
+
+Spectrogram `scale` is optionally `linear` (the default for older sessions) or
+`db`. `levels` always refers to the selected display scale. An optional
+`levels_by_scale` object stores the contrast ranges remembered for both scales,
+for example `{"linear": [1e-10, 1e-7], "db": [-100, -70]}`. These fields retain
+schema version **1**. dB uses a reference of 1 in the NPZ's `data_unit` and never
+changes the stored linear PSD. Units, labels, and explicit `frequency_hz`
+coordinates are read from the referenced NPZ's native metadata when loading;
+they are not duplicated in the session file. Numeric column names without
+`frequency_hz` metadata do not qualify a source for spectrogram display.
 
 The view records the shared time range, its autoscale flag, all four vertical
 ranges and autoscale flags, splitter proportions, and the global legend/time
