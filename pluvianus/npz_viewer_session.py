@@ -83,6 +83,8 @@ def validate_session(document):
                 _range(image['levels'], name + ' color limits')
     view = document.get('view', {})
     _require(isinstance(view, dict), 'View settings must be an object.')
+    for key in ('legends_visible', 'scale_bar_visible'):
+        _require(type(view.get(key, True)) is bool, f'{key} must be true or false.')
     if 'time_range' in view:
         _range(view['time_range'], 'Time range')
     _require(type(view.get('time_auto_range', False)) is bool, 'Time autoscale must be true or false.')

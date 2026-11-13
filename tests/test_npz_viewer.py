@@ -10,10 +10,10 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import numpy as np
 import pynapple as nap
-from PySide6.QtCore import QPointF, QSettings, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QLocale, QPoint, QPointF, QSettings, Qt
+from PySide6.QtGui import QColor, QWheelEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QStyle, QStyleOptionSpinBox
 
 from pluvianus.GripSplitter import GripSplitterHandle
 from pluvianus.npz_intervals import high_state_epochs
@@ -77,9 +77,10 @@ class NpzViewerTests(unittest.TestCase):
                     if view is not target_view:
                         self.assertNotIn(curve, view.addedItems)
                 legend_curves = [sample.item for sample, _ in plot.plotItem.legend.items]
-                self.assertEqual(curve in legend_curves, plot is target_plot)
+                self.assertFalse(curve in legend_curves)
         child.setCheckState(0, Qt.CheckState.Checked)
         self.assertTrue(curve.isVisible())
+        self.assertIn(curve, [sample.item for sample, _ in target_plot.plotItem.legend.items])
         self.viewer.close_file(self.key)
         for plot, right_view in self.viewer.plot_views.items():
             self.assertFalse(plot.getViewBox().addedItems)
@@ -742,6 +743,288 @@ class NpzViewerTests(unittest.TestCase):
         restored.tree.itemWidget(restored.files[key][0], 1).setCurrentText('Curves')
         self.assertEqual(restored.tree.itemWidget(restored.files[key][0].child(0), 1).currentText(), 'Intervals')
         self.assertTrue(all(item.scene() is not None for item in restored.interval_states[state.curves[0]].items))
+
+    def test_recent_menu_persists_and_reopens_both_json_sessions_and_npz_sources(self):
+        self.load_curves()
+        path = Path(self.directory.name) / 'display & colors.json'
+        self.assertTrue(self.viewer.save_session(path))
+        self.assertEqual(self.viewer.recent_files[0], str(path))
+        self.viewer.update_recent_menu()
+        action = self.viewer.recent_menu.actions()[0]
+        self.assertEqual(action.text(), str(path).replace('&', '&&'))
+        self.viewer.close_file(self.key)
+        with patch.object(self.viewer, 'load_session', wraps=self.viewer.load_session) as load:
+            action.trigger()
+            load.assert_called_once_with(str(path), locate_missing=True)
+        self.assertIn(self.key, self.viewer.files)
+        self.assertEqual(self.viewer.recent_files[0], str(path))
+        source = next(recent for recent in self.viewer.recent_files if recent.lower().endswith('.npz'))
+        with patch.object(self.viewer, 'add_files', wraps=self.viewer.add_files) as add:
+            self.viewer.open_recent(source)
+            add.assert_called_once_with([source])
+        reopened = self.make_viewer()
+        self.assertIn(str(path), reopened.recent_files)
+        self.assertEqual(len([recent for recent in reopened.recent_files if recent == str(path)]), 1)
+
+    def test_spectrogram_status_reports_raw_values_on_all_axes_and_gaps(self):
+        values = np.arange(15, dtype=float).reshape(5, 3) * 1e-10
+        values[0, 2] = np.nan
+        key, _, parent = self.load_spectrogram(values=values, columns=[3., 1., 2.])
+        self.viewer.tree.itemWidget(parent, 1).setCurrentText('Spectrogram')
+        layer = self.viewer.files[key][1][0]
+        self.assertAlmostEqual(layer.value_at(1.5, 2.), 5e-10, delta=1e-20)
+        self.assertIsNone(layer.value_at(.5, 2.))
+        self.assertIsNone(layer.value_at(4.5, 2.))
+        self.assertIsNone(layer.value_at(1.5, 10.))
+        for axis, (panel, view) in self.viewer.axis_targets.items():
+            self.viewer.tree.itemWidget(parent.child(0), 1).setCurrentText(axis)
+            self.viewer.plot.setXRange(0., 8., padding=0)
+            view.setYRange(.5, 3.5, padding=0)
+            self.app.processEvents()
+            self.viewer.update_coordinates(view.mapViewToScene(QPointF(1.5, 2.)), panel)
+            self.assertIn('spectrum.npz value: 5e-10', self.viewer.coordinate_status.text())
+            self.viewer.update_coordinates(view.mapViewToScene(QPointF(4.5, 2.)), panel)
+            self.assertIn('spectrum.npz value: no data', self.viewer.coordinate_status.text())
+        parent.child(0).setCheckState(0, Qt.CheckState.Unchecked)
+        self.viewer.update_coordinates(view.mapViewToScene(QPointF(1.5, 2.)), panel)
+        self.assertNotIn('spectrum.npz value:', self.viewer.coordinate_status.text())
+
+    def test_wheeling_over_spectrogram_refreshes_status_without_mouse_movement(self):
+        _, _, parent = self.load_spectrogram()
+        self.viewer.tree.itemWidget(parent, 1).setCurrentText('Spectrogram')
+        panel = self.viewer.plot
+        panel.setXRange(0., 8., padding=0)
+        panel.setYRange(.5, 3.5, padding=0)
+        self.app.processEvents()
+        point = panel.mapFromScene(panel.getViewBox().mapViewToScene(QPointF(1.5, 2.)))
+        wheel = QWheelEvent(QPointF(point), QPointF(panel.viewport().mapToGlobal(point)),
+                            QPoint(), QPoint(0, 120), Qt.MouseButton.NoButton,
+                            Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False)
+        self.viewer.clear_coordinates()
+        QApplication.sendEvent(panel.viewport(), wheel)
+        self.app.processEvents()
+        self.assertIn('spectrum.npz value: 4', self.viewer.coordinate_status.text())
+
+    def test_small_color_limits_accept_scientific_notation_and_both_decimal_separators(self):
+        previous_locale = QLocale()
+        QLocale.setDefault(QLocale(QLocale.Language.Hungarian, QLocale.Country.Hungary))
+        self.addCleanup(QLocale.setDefault, previous_locale)
+        values = np.arange(15, dtype=float).reshape(5, 3) * 1e-8
+        key, _, parent = self.load_spectrogram(values=values)
+        self.viewer.tree.itemWidget(parent, 1).setCurrentText('Spectrogram')
+        layer = self.viewer.files[key][1][0]
+        dialog = SpectrogramColorsDialog(layer, self.viewer)
+        dialog.show()
+        self.addCleanup(dialog.close)
+        self.app.processEvents()
+        for spin, text in [(dialog.low, '2.5e-10'), (dialog.high, '8e-7')]:
+            spin.setFocus()
+            spin.lineEdit().selectAll()
+            QTest.keyClicks(spin.lineEdit(), text)
+            QTest.keyClick(spin, Qt.Key.Key_Tab)
+            self.app.processEvents()
+        self.assertEqual(layer.levels, (2.5e-10, 8e-7))
+        self.assertFalse(dialog.error_label.isVisible())
+        dialog.low.setFocus()
+        dialog.low.lineEdit().selectAll()
+        QTest.keyClicks(dialog.low.lineEdit(), '3,5e-10')
+        QTest.keyClick(dialog.low, Qt.Key.Key_Tab)
+        self.app.processEvents()
+        self.assertEqual(dialog.low.value(), 3.5e-10)
+        self.assertEqual(layer.levels, (3.5e-10, 8e-7))
+        dialog.low.stepBy(1)
+        self.assertAlmostEqual(dialog.low.value(), 1.035e-8, delta=1e-22)
+        for image in layer.images:
+            np.testing.assert_allclose(image.getLevels(), [1.035e-8, 8e-7], rtol=1e-12, atol=0.)
+        previous = layer.levels
+        dialog.high.setValue(1e-11)
+        self.assertTrue(dialog.error_label.isVisible())
+        self.assertIn('greater', dialog.error_label.text())
+        self.assertEqual(layer.levels, previous)
+        dialog.high.lineEdit().setText('not a number')
+        self.assertTrue(dialog.error_label.isVisible())
+        self.assertIn('finite numbers', dialog.error_label.text())
+        self.assertEqual(layer.levels, previous)
+        dialog.reset_colors()
+        self.assertFalse(dialog.error_label.isVisible())
+        np.testing.assert_allclose(layer.levels, layer.default_levels, rtol=1e-12, atol=0.)
+
+    def test_standard_color_picker_updates_lines_intervals_and_saved_colors(self):
+        key, _, parent, curves = self.load_annotations()
+        button = self.viewer.tree.itemWidget(parent.child(0), 2)
+        self.assertIsNotNone(button)
+        pen = curves[0].opts['pen']
+        pen.setWidthF(2.5)
+        curves[0].setPen(pen)
+        picked = QColor('#d0286f9a')
+        with patch('pluvianus.pynapple_npz_viewer.QColorDialog.getColor', return_value=picked) as picker:
+            button.click()
+        self.assertEqual(picker.call_args.args[2], 'Line color')
+        self.assertEqual(curves[0].opts['pen'].color(), picked)
+        self.assertEqual(curves[0].opts['pen'].widthF(), 2.5)
+        self.assertEqual(parent.child(0).foreground(0).color(), picked)
+        self.viewer.tree.itemWidget(parent.child(0), 1).setCurrentText('Intervals')
+        picked = QColor('#ffcc5500')
+        with patch('pluvianus.pynapple_npz_viewer.QColorDialog.getColor', return_value=picked) as picker:
+            button.click()
+        self.assertEqual(picker.call_args.args[2], 'Interval color')
+        for shade in self.viewer.interval_states[curves[0]].items:
+            self.assertEqual(shade.brush.color().name(), '#cc5500')
+            self.assertAlmostEqual(shade.brush.color().alphaF(), .14, delta=.005)
+        with patch('pluvianus.pynapple_npz_viewer.QColorDialog.getColor', return_value=QColor()):
+            button.click()
+        self.assertEqual(curves[0].opts['pen'].color(), picked)
+        path = Path(self.directory.name) / 'colors.npzview.json'
+        self.assertTrue(self.viewer.save_session(path))
+        saved = session.read_session(path)['files'][0]['curves'][0]
+        self.assertEqual(saved['color'], '#ffcc5500')
+        restored = self.make_viewer()
+        self.assertTrue(restored.load_session(path))
+        curve = restored.files[key][1][0]
+        self.assertEqual(curve.opts['pen'].color(), picked)
+        self.assertTrue(restored.is_interval_curve(curve))
+        self.assertEqual(restored.interval_states[curve].items[0].brush.color().name(), '#cc5500')
+
+    def test_curve_color_buttons_are_restored_after_switching_from_spectrogram(self):
+        _, _, parent, curves = self.load_annotations(columns=[1., 2.])
+        display = self.viewer.tree.itemWidget(parent, 1)
+        display.setCurrentText('Spectrogram')
+        self.assertEqual(self.viewer.tree.itemWidget(parent.child(0), 2).accessibleName(), 'Spectrogram colors')
+        display.setCurrentText('Curves')
+        picked = QColor('#ff00aa44')
+        with patch('pluvianus.pynapple_npz_viewer.QColorDialog.getColor', return_value=picked):
+            self.viewer.tree.itemWidget(parent.child(0), 2).click()
+        self.assertEqual(curves[0].opts['pen'].color(), picked)
+        self.assertEqual(parent.child(0).foreground(0).color(), picked)
+
+    def test_legends_follow_visible_curves_across_panels(self):
+        parent, curves = self.load_curves()
+        viewer = self.viewer
+
+        def entries(panel):
+            return [sample.item for sample, _ in panel.plotItem.legend.items]
+
+        self.assertEqual(entries(viewer.plot), curves)
+        parent.child(0).setCheckState(0, Qt.CheckState.Unchecked)
+        self.assertEqual(entries(viewer.plot), [curves[1]])
+        viewer.tree.itemWidget(parent.child(1), 1).setCurrentText('Bottom right')
+        self.assertFalse(entries(viewer.plot))
+        self.assertFalse(viewer.plot.plotItem.legend.isVisible())
+        self.assertEqual(entries(viewer.bottom_plot), [curves[1]])
+        # External graphics-item visibility changes must not leave stale entries.
+        curves[1].setVisible(False)
+        self.assertFalse(entries(viewer.bottom_plot))
+        curves[1].setVisible(True)
+        self.assertEqual(entries(viewer.bottom_plot), [curves[1]])
+        parent.setCheckState(0, Qt.CheckState.Unchecked)
+        self.assertFalse(entries(viewer.plot))
+        self.assertFalse(entries(viewer.bottom_plot))
+        parent.child(0).setCheckState(0, Qt.CheckState.Checked)
+        self.assertEqual(entries(viewer.plot), [curves[0]])
+
+    def test_clicking_legend_samples_and_labels_selects_the_curve_without_hiding_it(self):
+        parent, curves = self.load_curves()
+        viewer = self.viewer
+        for axis, (panel, _) in viewer.axis_targets.items():
+            viewer.tree.itemWidget(parent.child(0), 1).setCurrentText(axis)
+            for part in ('sample', 'label'):
+                with self.subTest(axis=axis, part=part):
+                    parent.setExpanded(False)
+                    viewer.tree.setCurrentItem(parent)
+                    self.app.processEvents()
+                    sample, label = next((sample, label) for sample, label in panel.plotItem.legend.items
+                                         if sample.item is curves[0])
+                    item = sample if part == 'sample' else label
+                    position = panel.mapFromScene(item.mapToScene(item.boundingRect().center()))
+                    QTest.mouseClick(panel.viewport(), Qt.MouseButton.LeftButton, pos=position)
+                    self.app.processEvents()
+                    self.assertIs(viewer.tree.currentItem(), parent.child(0))
+                    self.assertTrue(parent.isExpanded())
+                    self.assertTrue(curves[0].isVisible())
+                    self.assertEqual(parent.child(0).checkState(0), Qt.CheckState.Checked)
+
+    def test_view_menu_toggles_legends_and_scale_bar_and_restores_them_from_settings(self):
+        parent, curves = self.load_curves()
+        viewer = self.viewer
+        viewer.tree.itemWidget(parent.child(1), 1).setCurrentText('Bottom right')
+        self.assertTrue(all(panel.plotItem.legend.isVisible() for panel in viewer.plot_views))
+        viewer.legend_action.trigger()
+        viewer.scale_bar_action.trigger()
+        self.assertFalse(any(panel.plotItem.legend.isVisible() for panel in viewer.plot_views))
+        self.assertFalse(viewer.time_scale_bar.isVisible())
+        self.assertTrue(all(curve.isVisible() for curve in curves))
+        viewer.plot.setXRange(0., .005, padding=0)
+        self.assertFalse(viewer.time_scale_bar.isVisible())
+        path = Path(self.directory.name) / 'view.npzview.json'
+        self.assertTrue(viewer.save_session(path))
+        document = session.read_session(path)
+        self.assertFalse(document['view']['legends_visible'])
+        self.assertFalse(document['view']['scale_bar_visible'])
+        self.assertEqual(document['version'], 1)
+        restored = self.make_viewer()
+        self.assertFalse(restored.legend_action.isChecked())
+        self.assertFalse(restored.scale_bar_action.isChecked())
+        self.assertTrue(restored.load_session(path))
+        restored.legend_action.trigger()
+        restored.scale_bar_action.trigger()
+        self.assertTrue(all(panel.plotItem.legend.isVisible() for panel in restored.plot_views))
+        self.assertTrue(restored.time_scale_bar.isVisible())
+        self.assertTrue(restored.load_session(path))
+        self.assertFalse(restored.legend_action.isChecked())
+        self.assertFalse(restored.scale_bar_action.isChecked())
+        # Earlier version-1 sessions have no decoration preferences.
+        document['view'].pop('legends_visible')
+        document['view'].pop('scale_bar_visible')
+        session.write_session(path, document)
+        restored.legend_action.setChecked(True)
+        restored.scale_bar_action.setChecked(True)
+        self.assertTrue(restored.load_session(path))
+        self.assertTrue(restored.legend_action.isChecked())
+        self.assertTrue(restored.scale_bar_action.isChecked())
+
+    def test_color_limit_arrow_buttons_use_current_range_and_five_significant_digits(self):
+        key, _, parent = self.load_spectrogram(values=np.arange(15, dtype=float).reshape(5, 3) * 1e-7)
+        self.viewer.tree.itemWidget(parent, 1).setCurrentText('Spectrogram')
+        layer = self.viewer.files[key][1][0]
+        original = (1.23456789e-10, 8.7654321e-7)
+        layer.set_colors('hot', original)
+        dialog = SpectrogramColorsDialog(layer, self.viewer)
+        dialog.show()
+        self.addCleanup(dialog.close)
+        self.app.processEvents()
+        dialog.colormap.setCurrentText('viridis')
+        self.assertEqual(layer.levels, original)  # Formatting must not discard stored precision.
+
+        def click_arrow(spin, up):
+            option = QStyleOptionSpinBox()
+            spin.initStyleOption(option)
+            control = QStyle.SubControl.SC_SpinBoxUp if up else QStyle.SubControl.SC_SpinBoxDown
+            rectangle = spin.style().subControlRect(QStyle.ComplexControl.CC_SpinBox, option, control, spin)
+            self.assertGreater(rectangle.height(), 0)
+            self.assertGreater(rectangle.width(), 0)
+            QTest.mouseClick(spin, Qt.MouseButton.LeftButton, pos=rectangle.center())
+            self.app.processEvents()
+
+        click_arrow(dialog.low, True)
+        self.assertAlmostEqual(dialog.low.value(), original[0] + 1e-8, delta=1e-22)
+        click_arrow(dialog.high, False)
+        self.assertAlmostEqual(dialog.high.value(), original[1] - 1e-8, delta=1e-21)
+        for spin in (dialog.low, dialog.high):
+            self.assertEqual(float(spin.lineEdit().text()), float(f'{spin.value():.5g}'))
+        for image in layer.images:
+            np.testing.assert_allclose(image.getLevels(), [dialog.low.value(), dialog.high.value()],
+                                       rtol=1e-12, atol=0.)
+        # Rescaling the limits changes the actual button step, including near zero.
+        dialog.low.setValue(-2e-10)
+        dialog.high.setValue(8e-10)
+        click_arrow(dialog.low, False)
+        self.assertAlmostEqual(dialog.low.value(), -2.1e-10, delta=1e-23)
+        click_arrow(dialog.high, True)
+        self.assertAlmostEqual(dialog.high.value(), 8.1e-10, delta=1e-23)
+        dialog.low.setValue(0.)
+        dialog.high.setValue(1e-7)
+        click_arrow(dialog.low, True)
+        self.assertAlmostEqual(dialog.low.value(), 1e-9, delta=1e-22)
 
 
 if __name__ == '__main__':

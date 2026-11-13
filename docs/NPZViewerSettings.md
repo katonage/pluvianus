@@ -8,6 +8,10 @@ update it subsequently. **Save settings as…** (`Ctrl+Shift+S`) chooses another
 destination. **Load settings…** (`Ctrl+Shift+O`) replaces the current display with
 the saved session.
 
+Saved and loaded settings files also appear in **File → Open recent** alongside
+NPZ recordings. Choosing a JSON entry restores the session; choosing an NPZ entry
+opens that recording. The most recent 20 entries are remembered.
+
 A minimal example:
 
 ```json
@@ -29,6 +33,8 @@ A minimal example:
   "view": {
     "time_range": [120.0, 180.0],
     "time_auto_range": false,
+    "legends_visible": true,
+    "scale_bar_visible": true,
     "axes": {
       "top_left": {"range": [1.0, 200.0], "auto_range": false}
     },
@@ -87,7 +93,10 @@ are saved, including an inactive spectrogram's previously chosen colors and the
 individual frequency curves. Hidden image pieces are reconstructed lazily.
 
 The view records the shared time range, its autoscale flag, all four vertical
-ranges and autoscale flags, and splitter proportions. Omitted ranges autoscale.
+ranges and autoscale flags, splitter proportions, and the global legend/time
+scale-bar visibility. The optional boolean fields `legends_visible` and
+`scale_bar_visible` use the existing schema version **1**; when omitted, the
+current View-menu choices are retained. Omitted ranges autoscale.
 
 When sources are missing, a dialog allows individual files to be located or the
 available files to be loaded. Cancel leaves the current session intact. Loading

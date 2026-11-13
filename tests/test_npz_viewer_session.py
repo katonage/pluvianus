@@ -83,6 +83,10 @@ class NpzSessionFormatTests(unittest.TestCase):
         changed = copy.deepcopy(self.document)
         changed['view']['splitters']['plots'] = [0., 0.]
         invalid.append(changed)
+        for key in ('legends_visible', 'scale_bar_visible'):
+            changed = copy.deepcopy(self.document)
+            changed['view'][key] = 'yes'
+            invalid.append(changed)
         for changed in invalid:
             with self.subTest(document=changed):
                 with self.assertRaises(ValueError):

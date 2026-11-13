@@ -8,10 +8,11 @@ from dataclasses import dataclass
 import numpy as np
 import pynapple as nap
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, QLineF, QPointF, QSettings, QSignalBlocker, Qt
+from pyqtgraph.graphicsItems.LegendItem import ItemSample
+from PySide6.QtCore import QEvent, QLineF, QPointF, QSettings, QSignalBlocker, QTimer, Qt
 from PySide6.QtGui import QAction, QColor, QKeySequence
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QGraphicsLineItem,
+    QApplication, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QGraphicsLineItem,
     QHeaderView, QLabel, QMenuBar, QMessageBox, QPushButton, QSizePolicy,
     QSplitter, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
@@ -33,6 +34,13 @@ pg.setConfigOption('foreground', 'k')
 
 COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
           '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+
+
+class CurveLegendSample(ItemSample):
+    def mouseClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+            self.sigClicked.emit(self.item)
 
 
 @dataclass
@@ -130,6 +138,13 @@ class NpzViewer(QWidget):
         exit_action.setShortcut(QKeySequence.StandardKey.Quit)
         exit_action.setMenuRole(QAction.MenuRole.QuitRole)
         exit_action.triggered.connect(self.close)
+        view_menu = menu_bar.addMenu('&View')
+        self.legend_action = view_menu.addAction('Show &legends')
+        self.legend_action.setCheckable(True)
+        self.legend_action.setChecked(self.settings.value('view/legends_visible', True, type=bool))
+        self.scale_bar_action = view_menu.addAction('Show time &scale bar')
+        self.scale_bar_action.setCheckable(True)
+        self.scale_bar_action.setChecked(self.settings.value('view/scale_bar_visible', True, type=bool))
         help_menu = menu_bar.addMenu('&Help')
         about_action = help_menu.addAction('&About NPZ viewer…')
         about_action.setMenuRole(QAction.MenuRole.AboutRole)
@@ -138,6 +153,7 @@ class NpzViewer(QWidget):
         layout.addWidget(self.splitter)
         sidebar = QWidget()
         sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(['Files / data', 'Axis / display', ''])
         self.tree.header().setStretchLastSection(False)
@@ -174,6 +190,7 @@ class NpzViewer(QWidget):
         }
         self.bottom_plot.setXLink(self.plot)
         for plot in self.plot_views:
+            plot.plotItem.legend.sigSampleClicked.connect(self.select_legend_curve)
             self.plot_splitter.addWidget(plot)
             # Tick labels can move the plot without changing its size.
             plot.getViewBox().geometryChanged.connect(self.update_views)
@@ -194,6 +211,9 @@ class NpzViewer(QWidget):
         self.time_scale_bar.text.setColor('k')
         self.plot.getViewBox().sigXRangeChanged.connect(self.update_time_scale_bar)
         self.update_time_scale_bar()
+        self.legend_action.toggled.connect(self.update_view_decorations)
+        self.scale_bar_action.toggled.connect(self.update_view_decorations)
+        self.update_view_decorations()
         geometry = self.settings.value('window/geometry')
         if geometry is not None:
             self.restoreGeometry(geometry)
@@ -207,7 +227,7 @@ class NpzViewer(QWidget):
     @staticmethod
     def create_plot():
         plot = pg.PlotWidget()
-        plot.addLegend(offset=(10, 10))
+        plot.addLegend(offset=(10, 10), sampleType=CurveLegendSample)
         plot.setLabel('bottom', 'Time (s)')
         plot.setLabel('left', 'Left axis')
         plot.showAxis('right')
@@ -222,6 +242,42 @@ class NpzViewer(QWidget):
         for side in ('left', 'right'):
             plot.getAxis(side).setWidth(80)
         return plot, right_view
+
+    def sync_legends(self):
+        for panel in self.plot_views:
+            legend = panel.plotItem.legend
+            visible = [curve for curve, axis in self.curve_axes.items()
+                       if isinstance(curve, pg.PlotDataItem) and curve.isVisible()
+                       and not self.is_interval_curve(curve) and self.axis_targets[axis][0] is panel]
+            for sample, _ in tuple(legend.items):
+                if sample.item not in visible:
+                    legend.removeItem(sample.item)
+            existing = {sample.item for sample, _ in legend.items}
+            for curve in visible:
+                if curve not in existing:
+                    legend.addItem(curve, curve.name())
+            for sample, label in legend.items:
+                # Both the line sample and its text select the same sidebar row.
+                label.mouseClickEvent = sample.mouseClickEvent
+                label.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+            legend.setVisible(self.legend_action.isChecked() and bool(legend.items))
+
+    def select_legend_curve(self, curve):
+        for parent, _ in self.files.values():
+            for index in range(parent.childCount()):
+                child = parent.child(index)
+                if child.data(0, Qt.ItemDataRole.UserRole) is curve:
+                    parent.setExpanded(True)
+                    self.tree.setCurrentItem(child)
+                    self.tree.scrollToItem(child)
+                    self.tree.setFocus(Qt.FocusReason.OtherFocusReason)
+                    return
+
+    def update_view_decorations(self, *args):
+        self.sync_legends()
+        self.time_scale_bar.setVisible(self.scale_bar_action.isChecked())
+        self.settings.setValue('view/legends_visible', self.legend_action.isChecked())
+        self.settings.setValue('view/scale_bar_visible', self.scale_bar_action.isChecked())
 
     def update_time_scale_bar(self, *args):
         lower, upper = self.plot.getViewBox().viewRange()[0]
@@ -266,9 +322,19 @@ class NpzViewer(QWidget):
         left = left_view.mapSceneToView(position)
         right = self.plot_views[plot].mapSceneToView(position)
         panel = 'Top' if plot is self.plot else 'Bottom'
-        self.coordinate_status.setText(
+        status = (
             f'{panel} plot\nx: {left.x():.6f} s\ny1 (left): {left.y():.6g}\ny2 (right): {right.y():.6g}'
         )
+        for parent, items in self.files.values():
+            for item in items:
+                if not isinstance(item, SpectrogramItem) or not item.isVisible():
+                    continue
+                target_plot, target_view = self.axis_targets[self.curve_axes[item]]
+                if target_plot is plot:
+                    point = target_view.mapSceneToView(position)
+                    value = item.value_at(point.x(), point.y())
+                    status += f'\n{parent.text(0)} value: ' + (f'{value:.6g}' if value is not None else 'no data')
+        self.coordinate_status.setText(status)
 
     def clear_coordinates(self):
         self.coordinate_status.setText('x: — s\ny1 (left): —\ny2 (right): —')
@@ -299,6 +365,11 @@ class NpzViewer(QWidget):
                     return True
                 if event_type == QEvent.Type.Wheel:
                     return True
+            if event_type == QEvent.Type.Wheel:
+                # Let pyqtgraph zoom first, then sample the data now under the pointer.
+                point = event.position().toPoint()
+                QTimer.singleShot(0, lambda plot=plot, point=point: self.update_coordinates(
+                    plot.mapToScene(point), plot))
             if event_type == QEvent.Type.Leave and self.measurement_line is None:
                 self.clear_coordinates()
         return super().eventFilter(watched, event)
@@ -379,6 +450,8 @@ class NpzViewer(QWidget):
             files.append(entry)
         view = {'time_range': list(self.plot.getViewBox().viewRange()[0]),
                 'time_auto_range': bool(self.plot.getViewBox().autoRangeEnabled()[0]),
+                'legends_visible': self.legend_action.isChecked(),
+                'scale_bar_visible': self.scale_bar_action.isChecked(),
                 'axes': {}, 'splitters': {}}
         for axis, (_, target) in self.axis_targets.items():
             view['axes'][axis.lower().replace(' ', '_')] = {
@@ -423,7 +496,8 @@ class NpzViewer(QWidget):
     def remember_session(self, path):
         self.session_path = os.path.abspath(path)
         self.settings.setValue('files/settings_directory', os.path.dirname(self.session_path))
-        self.settings.sync()
+        self.remember_recent(self.session_path)
+        self.update_title()
 
     def load_settings(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -557,6 +631,10 @@ class NpzViewer(QWidget):
 
     def restore_view_settings(self, view):
         # Load view ranges last: adding/moving data and changing layout can autorange.
+        if 'legends_visible' in view:
+            self.legend_action.setChecked(view['legends_visible'])
+        if 'scale_bar_visible' in view:
+            self.scale_bar_action.setChecked(view['scale_bar_visible'])
         for _, target in self.axis_targets.values():
             target.enableAutoRange(x=False, y=False)
         for name, splitter in [('sidebar', self.splitter), ('plots', self.plot_splitter)]:
@@ -582,15 +660,25 @@ class NpzViewer(QWidget):
         for path in self.recent_files:
             action = self.recent_menu.addAction(path.replace('&', '&&'))
             action.triggered.connect(
-                lambda checked=False, path=path: self.add_files([path])
+                lambda checked=False, path=path: self.open_recent(path)
             )
+
+    def open_recent(self, path):
+        if path.lower().endswith('.json'):
+            self.load_session(path, locate_missing=True)
+        else:
+            self.add_files([path])
 
     def remember_file(self, path):
         self.settings.setValue('files/last_directory', os.path.dirname(path))
-        key = os.path.normcase(path)
+        self.remember_recent(path)
+
+    def remember_recent(self, path):
+        path = os.path.abspath(path)
+        key = os.path.normcase(os.path.realpath(path))
         self.recent_files = [path] + [
             recent for recent in self.recent_files
-            if os.path.normcase(recent) != key
+            if os.path.normcase(os.path.realpath(recent)) != key
         ]
         self.recent_files = self.recent_files[:20]
         self.settings.setValue('files/recent', self.recent_files)
@@ -657,6 +745,7 @@ class NpzViewer(QWidget):
                                           connect=connect)
                     plots.append(plot)
                     self.curve_axes[plot] = 'Top left'
+                    plot.visibleChanged.connect(self.sync_legends)
                     epochs = high_state_epochs(times, np.asarray(values), data.time_support)
                     if epochs is not None:
                         self.interval_states[plot] = IntervalShading(epochs)
@@ -672,6 +761,7 @@ class NpzViewer(QWidget):
                 for index, plot in enumerate(plots):
                     axis = self.axis_preferences.get(key, {}).get(parent.child(index).text(0), 'Top left')
                     self.add_axis_selector(parent.child(index), plot, axis)
+                    self.add_color_button(parent.child(index), plot)
                 close_button = QToolButton()
                 close_button.setText('×')
                 close_button.setStyleSheet('QToolButton { color: #d32f2f; font-size: 18px; font-weight: bold; }')
@@ -708,6 +798,7 @@ class NpzViewer(QWidget):
                         self.tree.takeTopLevelItem(index)
                 errors.append(f'{path}\n{exc}')
         self.update_title()
+        self.sync_legends()
         if errors and report_errors:
             QMessageBox.warning(self, 'Could not open files', '\n\n'.join(errors))
         return errors
@@ -729,6 +820,44 @@ class NpzViewer(QWidget):
             lambda axis, plot=plot: self.set_curve_axis(plot, axis)
         )
         self.tree.setItemWidget(item, 1, selector)
+
+    def add_color_button(self, item, plot):
+        button = QToolButton()
+        button.setText('…')
+        if isinstance(plot, SpectrogramItem):
+            button.setToolTip('Change spectrogram colormap and color limits')
+            button.setAccessibleName('Spectrogram colors')
+            button.clicked.connect(
+                lambda checked=False, plot=plot: SpectrogramColorsDialog(plot, self).exec()
+            )
+        else:
+            button.setToolTip('Change line or interval color')
+            button.setAccessibleName('Line or interval color')
+            button.clicked.connect(
+                lambda checked=False, item=item, plot=plot: self.edit_curve_color(item, plot)
+            )
+        self.tree.setItemWidget(item, 2, button)
+
+    def edit_curve_color(self, item, plot):
+        color = QColorDialog.getColor(
+            plot.opts['pen'].color(), self,
+            'Interval color' if self.is_interval_curve(plot) else 'Line color',
+            QColorDialog.ColorDialogOption.ShowAlphaChannel,
+        )
+        if not color.isValid():
+            return
+        pen = pg.mkPen(plot.opts['pen'])
+        pen.setColor(color)
+        plot.setPen(pen)
+        item.setForeground(0, color)
+        shading = self.interval_states.get(plot)
+        if shading is not None:
+            for shade in shading.items:
+                shade.set_color(color)
+        for panel in self.plot_views:
+            for sample, _ in panel.plotItem.legend.items:
+                if sample.item is plot:
+                    sample.update()
 
     def set_file_display(self, key, mode):
         state = self.spectrograms[key]
@@ -771,21 +900,14 @@ class NpzViewer(QWidget):
                 child.setCheckState(0, Qt.CheckState.Checked if plot.isVisible()
                                     else Qt.CheckState.Unchecked)
                 child.setData(0, Qt.ItemDataRole.UserRole, plot)
-                if isinstance(plot, SpectrogramItem):
-                    button = QToolButton()
-                    button.setText('…')
-                    button.setToolTip('Change spectrogram colormap and color limits')
-                    button.setAccessibleName('Spectrogram colors')
-                    button.clicked.connect(
-                        lambda checked=False, plot=plot: SpectrogramColorsDialog(plot, self).exec()
-                    )
-                    self.tree.setItemWidget(child, 2, button)
-                else:
+                if not isinstance(plot, SpectrogramItem):
                     child.setForeground(0, plot.opts['pen'].color())
+                self.add_color_button(child, plot)
                 axis = self.axis_preferences.get(key, {}).get(label, default_axis)
                 self.add_axis_selector(child, plot, axis)
             self.files[key] = (parent, active)
         self.update_axis_labels()
+        self.sync_legends()
         for plot in active:
             if not self.is_interval_curve(plot):
                 self.axis_targets[self.curve_axes[plot]][1].enableAutoRange(y=True)
@@ -839,6 +961,7 @@ class NpzViewer(QWidget):
                     target_plot.plotItem.legend.addItem(plot, plot.name())
             self.curve_axes[plot] = axis
         plot.setVisible(visible)
+        self.sync_legends()
         self.update_views()
         self.update_axis_labels()
         if persist:
@@ -865,12 +988,7 @@ class NpzViewer(QWidget):
             plot.setVisible(item.checkState(0) == Qt.CheckState.Checked)
             if self.is_interval_curve(plot):
                 self.interval_states[plot].set_visible(plot.isVisible())
-            # External visibility changes do not repaint pyqtgraph's legend samples.
-            target_plot, _ = self.axis_targets[self.curve_axes[plot]]
-            for sample, _ in target_plot.plotItem.legend.items:
-                if sample.item is plot:
-                    sample.update()
-                    break
+            self.sync_legends()
 
     def close_file(self, key):
         parent, plots = self.files.pop(key)
@@ -884,11 +1002,14 @@ class NpzViewer(QWidget):
         self.file_data.pop(key, None)
         self.tree.takeTopLevelItem(self.tree.indexOfTopLevelItem(parent))
         self.update_axis_labels()
+        self.sync_legends()
         self.update_title()
 
     def update_title(self):
         titles = [item.text(0) for item, _ in self.files.values()]
         title = 'Pynapple NPZ viewer'
+        if self.session_path is not None:
+            title += ' – ' + os.path.basename(self.session_path)
         if titles:
             title += ' – ' + ', '.join(titles[:2])
             if len(titles) > 2:

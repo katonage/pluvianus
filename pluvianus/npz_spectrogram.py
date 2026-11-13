@@ -1,15 +1,49 @@
 """Linear spectrogram geometry and rendering for ordinary Pynapple TsdFrames."""
 
+import math
+import re
+
 import numpy as np
 import pynapple as nap
 import pyqtgraph as pg
-from PySide6.QtCore import QRectF, Qt
+from PySide6.QtCore import QLocale, QPointF, QRectF, Qt
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGraphicsRectItem,
+    QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGraphicsRectItem, QLabel,
     QPushButton, QVBoxLayout,
 )
 
 SPECTROGRAM_COLORMAPS = ('hot', 'CET-L1', 'viridis', 'inferno', 'plasma', 'magma', 'cividis', 'turbo')
+COLOR_LIMIT_REGEX = re.compile(
+    r'^(?P<number>[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?)'
+    # SpinBox's SI parser appends X internally when its suffix is empty.
+    r'\s*(?P<siPrefix>)(?P<suffix>X?)$'
+)
+
+
+def color_limit_step(low, high):
+    """A convenient 1/2/5 step close to one percent of the current range."""
+    target = high / 100 - low / 100
+    smallest = float(np.nextafter(0., 1.))
+    if not math.isfinite(target) or target <= 0:
+        return smallest
+    magnitude = 10. ** math.floor(math.log10(target))
+    if magnitude == 0:
+        return smallest
+    return min((factor * magnitude for factor in (1, 2, 5, 10)), key=lambda step: abs(step - target))
+
+
+class ColorLimitSpinBox(pg.SpinBox):
+    def __init__(self, value, step_provider):
+        self.step_provider = step_provider
+        super().__init__(value=value, decimals=5, dec=False, step=step_provider(),
+                         compactHeight=False, locale=QLocale.c(), regex=COLOR_LIMIT_REGEX)
+
+    def stepBy(self, steps):
+        # Commit typed text before stepping, and calculate the step at the time
+        # of the click so editing a field never resets its unfinished text.
+        self.editingFinishedEvent()
+        self.setOpts(step=self.step_provider())
+        super().stepBy(steps)
 
 
 def regular_step(coordinates):
@@ -124,6 +158,20 @@ class SpectrogramItem(pg.GraphicsObject):
     def paint(self, painter, option, widget=None):
         pass  # The child ImageItems paint the spectrogram.
 
+    def value_at(self, time, frequency):
+        """Return the raw pixel value, or None outside valid, finite data."""
+        point = QPointF(time, frequency)
+        for image in self.images:
+            clip = image.parentItem().rect()
+            if not (clip.left() <= time < clip.right() and clip.top() <= frequency < clip.bottom()):
+                continue
+            pixel = image.mapFromItem(self, point)
+            column, row = math.floor(pixel.x()), math.floor(pixel.y())
+            if 0 <= row < image.image.shape[0] and 0 <= column < image.image.shape[1]:
+                value = float(image.image[row, column])
+                return value if math.isfinite(value) else None
+        return None
+
     def set_colors(self, name, levels):
         self.color_name = name
         self.levels = tuple(levels)
@@ -137,6 +185,7 @@ class SpectrogramColorsDialog(QDialog):
     def __init__(self, spectrogram, parent=None):
         super().__init__(parent)
         self.spectrogram = spectrogram
+        self._resetting = False
         self.setWindowTitle('Spectrogram colors')
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -145,10 +194,15 @@ class SpectrogramColorsDialog(QDialog):
         self.colormap.addItems(SPECTROGRAM_COLORMAPS)
         self.colormap.setCurrentText(spectrogram.color_name)
         form.addRow('Colormap', self.colormap)
-        self.low = pg.SpinBox(value=spectrogram.levels[0], decimals=8)
-        self.high = pg.SpinBox(value=spectrogram.levels[1], decimals=8)
+        self.low = self.create_limit_spinbox(spectrogram.levels[0])
+        self.high = self.create_limit_spinbox(spectrogram.levels[1])
         form.addRow('Minimum', self.low)
         form.addRow('Maximum', self.high)
+        self.error_label = QLabel()
+        self.error_label.setWordWrap(True)
+        self.error_label.setStyleSheet('color: #b00020;')
+        self.error_label.hide()
+        layout.addWidget(self.error_label)
         reset = QPushButton('Reset hot / 1–99 percentiles')
         reset.clicked.connect(self.reset_colors)
         layout.addWidget(reset)
@@ -156,18 +210,39 @@ class SpectrogramColorsDialog(QDialog):
         close.rejected.connect(self.reject)
         layout.addWidget(close)
         self.colormap.currentTextChanged.connect(self.apply_colors)
-        self.low.sigValueChanged.connect(self.apply_colors)
-        self.high.sigValueChanged.connect(self.apply_colors)
+        self.low.sigValueChanging.connect(self.apply_colors)
+        self.high.sigValueChanging.connect(self.apply_colors)
+        self.low.lineEdit().textChanged.connect(self.apply_colors)
+        self.high.lineEdit().textChanged.connect(self.apply_colors)
+
+    def create_limit_spinbox(self, value):
+        spin = ColorLimitSpinBox(value, lambda: color_limit_step(*self.spectrogram.levels))
+        spin.setToolTip('Enter a number such as 1e-10. Decimal points and commas are accepted.')
+        return spin
 
     def apply_colors(self, *args):
-        low, high = self.low.value(), self.high.value()
-        valid = low < high
-        self.high.setToolTip('Maximum must exceed minimum.' if not valid else '')
-        if valid:
+        if self._resetting:
+            return
+        # Read the entered text rather than the last committed spinbox value.
+        # This also validates a range while either field is still being edited.
+        try:
+            values = [spin.value() if spin.lineEdit().text() == spin.lastText else spin.interpret()
+                      for spin in (self.low, self.high)]
+        except (ArithmeticError, ValueError):
+            values = [False]
+        if any(value is False or not math.isfinite(float(value)) for value in values):
+            message = 'Enter finite numbers, for example 1e-10 and 1e-7.'
+        else:
+            low, high = map(float, values)
+            message = '' if low < high else 'Maximum must be greater than minimum.'
+        self.error_label.setText(message)
+        self.error_label.setVisible(bool(message))
+        if not message:
             self.spectrogram.set_colors(self.colormap.currentText(), (low, high))
 
     def reset_colors(self):
         # Intermediate edits must not apply an invalid or partially reset range.
+        self._resetting = True
         widgets = (self.colormap, self.low, self.high)
         for widget in widgets:
             widget.blockSignals(True)
@@ -176,4 +251,5 @@ class SpectrogramColorsDialog(QDialog):
         self.high.setValue(self.spectrogram.default_levels[1])
         for widget in widgets:
             widget.blockSignals(False)
+        self._resetting = False
         self.apply_colors()
